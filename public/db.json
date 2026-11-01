@@ -1,0 +1,86 @@
+{
+  "inverters": [
+    {
+      "id": "inv-1793543230587",
+      "photo": "https://cdn.qukasoft.com/f/495146/b3NlVUoyVTArYkI4Tmk4Z0dzbHVKYjBKSkl5OA/p/69d37ea1a0ec4-38558782-sw800sh800.webp",
+      "brand": "Deye",
+      "model": "Hibrit",
+      "kw": "20 kW",
+      "maxDcPower": "-",
+      "maxDcVoltage": "-",
+      "mpptRange": "-",
+      "mpptCount": "-",
+      "priceUsd": 3400
+    }
+  ],
+  "pvs": [
+    {
+      "id": "pv-1793543378189",
+      "photo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR-GtK6WT9q1-YpQ1gyjHUHDBbNkSlMJisJMRa-f5Ac9g&s=10",
+      "brand": "Smart",
+      "model": "A+",
+      "pvType": "Monokristal",
+      "nominalPower": "620 W",
+      "vmp": "-",
+      "imp": "-",
+      "voc": "-",
+      "efficiency": "-",
+      "cellCount": "-",
+      "lifespan": "-",
+      "priceUsd": 140
+    }
+  ],
+  "batteries": [
+    {
+      "id": "bat-1793543468714",
+      "photo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTs9oAYjKyAUrvNY9i8JQpWkeKygtxSAh_J9PFZMTf2yA&s=10",
+      "brand": "Solinved",
+      "model": "Batarya",
+      "batteryType": "Lityum Demir Fosfat (LiFePO₄ / LFP)",
+      "nominalVoltage": "-",
+      "capacityAh": "-",
+      "energyKwh": "5 kWh",
+      "dischargeCurrent": "-",
+      "chargeCurrent": "-",
+      "dod": "-",
+      "cycleLife": "-",
+      "bms": "-",
+      "priceUsd": 1000
+    }
+  ],
+  "infrastructure": [
+    {
+      "id": "inf-1793543658328",
+      "photo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSA3TefG7Vr1FeFjfIKuw23p4-cn6Qc_KoUHjiSzg19eg&s=10",
+      "category": "Solar Kablo (DC / AC)",
+      "name": "DC 6MM",
+      "brand": "-",
+      "applicationType": "Genel (Tüm Sahalar)",
+      "materialSpec": "-",
+      "unit": "Metre",
+      "warrantyStandard": "-",
+      "priceUsd": 0
+    },
+    {
+      "id": "inf-1793543574488",
+      "photo": "https://cdn.qukasoft.com/f/495146/b3NlVUoyVTArYkI4Tmk4Z0Y4OXJKYkFQSVl5OA/p/arazi-tipi-celik-konstruksiyon-12690181-sw800sh800.webp",
+      "category": "Konstrüksiyon & Montaj",
+      "name": "Galvanize",
+      "brand": "-",
+      "applicationType": "Genel (Tüm Sahalar)",
+      "materialSpec": "-",
+      "unit": "Adet",
+      "warrantyStandard": "-",
+      "priceUsd": 20
+    }
+  ],
+  "extras": [
+    {
+      "id": "ext-1793544109816",
+      "name": "Anahtar Teslim Kurulum ve İşçilik",
+      "description": "-",
+      "unit": "Hizmet",
+      "priceUsd": 1000
+    }
+  ]
+}
