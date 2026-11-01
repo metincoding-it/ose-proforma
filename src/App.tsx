@@ -31,7 +31,7 @@ function loadFromStorage<T>(key: string, fallback: T): T {
     const saved = localStorage.getItem(key);
     if (saved) return JSON.parse(saved) as T;
   } catch {
-    // localStorage okuma hatası olursa varsayılana dön
+    // Hata durumunda varsayılana dön
   }
   return fallback;
 }
@@ -58,17 +58,14 @@ export default function App() {
     loadFromStorage('ose_extras', INITIAL_EXTRAS)
   );
 
-  // 1. Açılışta ürünleri public/db.json dosyasından yükle
+  // 1. Açılışta ortak bulut veritabanından (/api/db) ürünleri çek
   useEffect(() => {
     async function initDatabase() {
       try {
-        // Önce yerel geliştirme sunucusundan (/api/db), olmazsa statik dosyadan (/db.json) oku
-        let res = await fetch('/api/db');
-        if (!res.ok) {
-          res = await fetch(`/db.json?t=${Date.now()}`);
-        }
+        const res = await fetch(`/api/db?t=${Date.now()}`, { cache: 'no-store' });
+        const contentType = res.headers.get('content-type') || '';
 
-        if (res.ok) {
+        if (res.ok && contentType.includes('application/json')) {
           const data = await res.json();
           if (Array.isArray(data.inverters)) setInverters(data.inverters);
           if (Array.isArray(data.pvs)) setPvs(data.pvs);
@@ -77,7 +74,7 @@ export default function App() {
           if (Array.isArray(data.extras)) setExtras(data.extras);
         }
       } catch {
-        // İlk kurulumda dosya henüz yoksa mevcut state kullanılır ve birazdan oluşturulur
+        // Bulut veritabanı henüz boşsa mevcut cihazdaki veriler korunur ve kaydedilir
       } finally {
         setIsDbLoaded(true);
       }
@@ -86,7 +83,7 @@ export default function App() {
     initDatabase();
   }, []);
 
-  // 2. Ürünler her değiştiğinde hem public/db.json dosyasına hem localStorage'a kaydet
+  // 2. Ürünler her değiştiğinde hem ortak bulut veritabanına (/api/db) hem tarayıcıya kaydet
   useEffect(() => {
     if (!isDbLoaded) return;
 
@@ -98,16 +95,12 @@ export default function App() {
       extras,
     };
 
-    // Bilgisayar diskine (public/db.json) kalıcı olarak yaz
     fetch('/api/db', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload, null, 2),
-    }).catch(() => {
-      // Statik Cloudflare ortamında sadece localStorage kullanılır
-    });
+      body: JSON.stringify(payload),
+    }).catch(() => {});
 
-    // Tarayıcı yedeği
     try {
       localStorage.setItem('ose_inverters', JSON.stringify(inverters));
       localStorage.setItem('ose_pvs', JSON.stringify(pvs));
@@ -115,7 +108,7 @@ export default function App() {
       localStorage.setItem('ose_infrastructure', JSON.stringify(infrastructure));
       localStorage.setItem('ose_extras', JSON.stringify(extras));
     } catch {
-      // Fotoğraf boyutu 5MB localStorage sınırını aşarsa çökmesini engeller
+      // 5MB localStorage sınırı aşılırsa çökmesini engeller
     }
   }, [inverters, pvs, batteries, infrastructure, extras, isDbLoaded]);
 
@@ -148,7 +141,6 @@ export default function App() {
         onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
       />
 
-      {/* MOBİL YATAY KATEGORİ BARI */}
       {hasSidebar && (
         <div className="md:hidden sticky top-24 z-30 bg-[#161920] border-b border-[#232730] px-3 py-2.5 flex items-center gap-2 overflow-x-auto no-scrollbar">
           {PRODUCT_SUB_MENUS.map((item) => {
