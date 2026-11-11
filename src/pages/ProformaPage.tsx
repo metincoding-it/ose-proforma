@@ -733,7 +733,7 @@ export default function ProformaPage({
               type="text"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Örn: Silopi Cami / Ahmet Yılmaz"
+              placeholder="Örn: Ahmet Yılmaz"
               className="w-full bg-[#111318] border border-[#2c303a] focus:border-[#00b8e6] rounded-2xl px-4 py-4 text-lg font-bold text-white placeholder-[#8a8f9e] focus:outline-none"
             />
           </div>
