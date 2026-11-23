@@ -16,6 +16,8 @@ import type {
   BatteryProduct,
   InfrastructureProduct,
   ExtraProduct,
+  CustomCategory,
+  CustomProduct,
   ProductSubTab,
 } from '../types/product';
 
@@ -25,6 +27,8 @@ interface ProformaPageProps {
   batteries: BatteryProduct[];
   infrastructure: InfrastructureProduct[];
   extras: ExtraProduct[];
+  customCategories: CustomCategory[];
+  customProducts: CustomProduct[];
 }
 
 interface PickerItem {
@@ -45,12 +49,11 @@ interface SelectedProformaItem {
   techSummary: string;
   unit: string;
   quantity: number;
-  quantityInput: string; // Kutuyu tamamen silip yeni sayı yazabilmek için
+  quantityInput: string;
   unitPriceUsd: number;
   photo?: string;
 }
 
-// Boş veya '-' olan değerleri temizleyen yardımcı fonksiyonlar
 function isValidValue(val?: string): boolean {
   if (!val) return false;
   const cleaned = val.trim();
@@ -103,7 +106,11 @@ function buildExtraSummary(ext: ExtraProduct): string {
   return 'Anahtar Teslim Kurulum, Montaj ve Mühendislik Hizmeti';
 }
 
-// Canvas için güvenli görsel yükleyici
+function buildCustomSummary(item: CustomProduct, categoryLabel: string): string {
+  if (isValidValue(item.specs)) return item.specs;
+  return `${categoryLabel} Donanımı`;
+}
+
 function loadImageSafe(src?: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     if (!src || !src.trim()) {
@@ -120,7 +127,6 @@ function loadImageSafe(src?: string): Promise<HTMLImageElement | null> {
   });
 }
 
-// Görseli kutu içine orantısını bozmadan (object-contain) çizer
 function drawContainImage(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
@@ -140,7 +146,6 @@ function drawContainImage(
   ctx.drawImage(img, drawX, drawY, drawW, drawH);
 }
 
-// Canvas üzerinde yuvarlatılmış dikdörtgen çizimi
 function drawRoundedRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -174,7 +179,6 @@ function drawRoundedRect(
   }
 }
 
-// Uzun metinleri satırlara bölen yardımcı fonksiyon
 function wrapCanvasText(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -203,6 +207,8 @@ export default function ProformaPage({
   batteries,
   infrastructure,
   extras,
+  customCategories,
+  customProducts,
 }: ProformaPageProps) {
   const [customerName, setCustomerName] = useState('');
   const [usdRateInput, setUsdRateInput] = useState<string>(() => {
@@ -246,7 +252,17 @@ export default function ProformaPage({
     }
   }, []);
 
-  // Tüm ürünleri tek bir seçilebilir listede birleştir (Arama ve sekme filtrelemesi için)
+  // Sekme listesi: Yerleşik 5 kategori + Dinamik eklenen kategoriler
+  const pickerTabs: { id: ProductSubTab; label: string }[] = [
+    { id: 'inverter', label: 'Inverter' },
+    { id: 'pv', label: 'PV Panel' },
+    { id: 'batarya', label: 'Batarya' },
+    { id: 'altyapi', label: 'Altyapı' },
+    { id: 'ekstralar', label: 'Ekstralar' },
+    ...customCategories.map((c) => ({ id: c.id, label: c.label })),
+  ];
+
+  // Tüm ürünleri tek listede birleştir
   const allPickerItems: PickerItem[] = [
     ...inverters.map((inv) => ({
       key: inv.id,
@@ -298,9 +314,22 @@ export default function ProformaPage({
       unitPriceUsd: ext.priceUsd,
       photo: undefined,
     })),
+    ...customProducts.map((cp) => {
+      const catLabel =
+        customCategories.find((c) => c.id === cp.categoryId)?.label || 'Özel Kategori';
+      return {
+        key: cp.id,
+        tab: cp.categoryId as ProductSubTab,
+        categoryLabel: catLabel,
+        title: cleanTitle(cp.brand, cp.name, catLabel),
+        techSummary: buildCustomSummary(cp, catLabel),
+        unit: cp.unit || 'Adet',
+        unitPriceUsd: cp.priceUsd,
+        photo: cp.photo,
+      };
+    }),
   ];
 
-  // Arama varsa tüm ürünlerde ara, yoksa aktif sekmedeki ürünleri göster
   const normalizedSearch = productSearch.trim().toLowerCase();
   const displayedPickerItems = normalizedSearch
     ? allPickerItems.filter(
@@ -311,7 +340,6 @@ export default function ProformaPage({
       )
     : allPickerItems.filter((item) => item.tab === pickerTab);
 
-  // Ürünü Teklife Ekle
   const addItem = (item: PickerItem) => {
     setSelectedItems((prev) => {
       const existing = prev.find((i) => i.key === item.key);
@@ -340,7 +368,6 @@ export default function ProformaPage({
     });
   };
 
-  // + ve - Butonları ile Adet Güncelleme
   const changeQuantityByStep = (key: string, delta: number) => {
     setSelectedItems((prev) => {
       return prev
@@ -358,7 +385,6 @@ export default function ProformaPage({
     });
   };
 
-  // Adet Kutusuna Yazarken (Tamamen silmeye izin verir)
   const handleQuantityInputChange = (key: string, rawVal: string) => {
     const cleaned = rawVal.replace(/[^0-9]/g, '');
     setSelectedItems((prev) =>
@@ -374,7 +400,6 @@ export default function ProformaPage({
     );
   };
 
-  // Adet Kutusundan Çıkınca (Boş bırakıldıysa 1'e tamamlar)
   const handleQuantityBlur = (key: string) => {
     setSelectedItems((prev) =>
       prev.map((item) => {
@@ -398,7 +423,6 @@ export default function ProformaPage({
   const totalTry = totalUsd * numericUsdRate;
   const displayRate = usdRateInput.trim() || '0';
 
-  // ÜRÜN FOTOĞRAFLI VE TAM ORTALI A4 PDF ÜRETİCİ
   const handleDownloadPdf = async () => {
     if (selectedItems.length === 0) return;
     setIsGeneratingPdf(true);
@@ -407,7 +431,6 @@ export default function ProformaPage({
       const canvas = document.createElement('canvas');
       const W = 1600;
       const rowH = 126;
-      // Çok sayıda ürün varsa sayfa yüksekliğini dinamik uzat, yoksa standart A4 (2262px)
       const neededHeight = 760 + selectedItems.length * (rowH + 12) + 320;
       const H = Math.max(2262, neededHeight);
       canvas.width = W;
@@ -416,14 +439,13 @@ export default function ProformaPage({
       const ctx = canvas.getContext('2d')!;
       const fontFamily = "system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif";
 
-      // Arka Plan Beyaz
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, W, H);
 
       const M = 80;
-      const contentW = W - M * 2; // 1440px
+      const contentW = W - M * 2;
 
-      // ================= 1. ÜST ANTET KUTUSU =================
+      // 1. ÜST ANTET
       const headerY = 70;
       const headerH = 190;
       drawRoundedRect(ctx, M, headerY, contentW, headerH, 28, '#111318');
@@ -462,7 +484,6 @@ export default function ProformaPage({
       ctx.fillStyle = '#8a8f9e';
       ctx.fillText('0544 462 11 22', brandX, headerCenterY + 30);
 
-      // Sağ Üst: PROFORMA TEKLİF Rozeti
       const badgeW = 310;
       const badgeH = 58;
       const badgeX = M + contentW - badgeW - 36;
@@ -484,7 +505,7 @@ export default function ProformaPage({
         headerCenterY + 36
       );
 
-      // ================= 2. MÜŞTERİ VE KONU KUTUSU =================
+      // 2. MÜŞTERİ VE KONU KUTUSU
       const infoY = headerY + headerH + 36;
       const infoH = 136;
       drawRoundedRect(ctx, M, infoY, contentW, infoH, 24, '#f8fafc', '#cbd5e1', 2);
@@ -514,13 +535,12 @@ export default function ProformaPage({
 
       ctx.font = `800 28px ${fontFamily}`;
       ctx.fillStyle = '#1e293b';
-      ctx.fillText('Güneş Enerjisi Sistemi (GES) Teklifi', M + contentW - 36, infoCenterY + 20);
+      ctx.fillText('Sistem Kurulum & Fiyat Teklifi', M + contentW - 36, infoCenterY + 20);
 
-      // ================= 3. ÜRÜN TABLOSU (FOTOĞRAFLI) =================
+      // 3. ÜRÜN TABLOSU
       const tableY = infoY + infoH + 40;
       const tableHeaderH = 74;
 
-      // Sütun Koordinatları
       const colPhotoCenterX = M + 68;
       const colTitleX = M + 136;
       const colSpecX = M + 620;
@@ -543,7 +563,6 @@ export default function ProformaPage({
       ctx.textAlign = 'center';
       ctx.fillText('MİKTAR', colQtyCenterX, thCenterY);
 
-      // Tüm ürünlerin fotoğraflarını önceden paralel yükle
       const loadedProductPhotos = await Promise.all(
         selectedItems.map((item) => loadImageSafe(item.photo))
       );
@@ -556,7 +575,6 @@ export default function ProformaPage({
 
         const rowCenterY = currentY + rowH / 2;
 
-        // 1. Ürün Fotoğrafı Kutusu (Fotoğraf varsa çiz, yoksa numara rozeti çiz)
         const thumbSize = 92;
         const thumbX = colPhotoCenterX - thumbSize / 2;
         const thumbY = rowCenterY - thumbSize / 2;
@@ -574,7 +592,6 @@ export default function ProformaPage({
           ctx.fillText(String(idx + 1), colPhotoCenterX, rowCenterY);
         }
 
-        // 2. Kategori Etiketi ve Ürün Adı
         ctx.textAlign = 'left';
         ctx.font = `800 18px ${fontFamily}`;
         ctx.fillStyle = '#0088ad';
@@ -585,7 +602,6 @@ export default function ProformaPage({
         const titleLines = wrapCanvasText(ctx, item.title, 460);
         ctx.fillText(titleLines[0] || item.title, colTitleX, rowCenterY + 16);
 
-        // 3. Teknik Özellik Özeti
         ctx.font = `600 22px ${fontFamily}`;
         ctx.fillStyle = '#334155';
         const specLines = wrapCanvasText(ctx, item.techSummary, 540);
@@ -596,7 +612,6 @@ export default function ProformaPage({
           ctx.fillText(specLines[1], colSpecX, rowCenterY + 15);
         }
 
-        // 4. Miktar Kutusu (Tam Ortalanmış)
         const qtyW = 190;
         const qtyH = 54;
         const displayQty = item.quantity > 0 ? item.quantity : 1;
@@ -620,7 +635,7 @@ export default function ProformaPage({
         currentY += rowH + 12;
       });
 
-      // ================= 4. ALT TOPLAM VE BİLGİ BÖLÜMÜ =================
+      // 4. ALT TOPLAM VE BİLGİ BÖLÜMÜ
       const footerH = 220;
       const footerY = Math.max(currentY + 40, H - footerH - 80);
 
@@ -775,7 +790,6 @@ export default function ProformaPage({
           2. Ürün Seçin
         </h2>
 
-        {/* ÜRÜN ARAMA KUTUSU */}
         <div className="relative">
           <Search className="w-5 h-5 text-[#8a8f9e] absolute left-4 top-1/2 -translate-y-1/2" />
           <input
@@ -796,20 +810,13 @@ export default function ProformaPage({
           )}
         </div>
 
-        {/* KATEGORİ SEKMELERİ (Arama yapılmıyorken aktif) */}
         {!normalizedSearch ? (
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-            {[
-              { id: 'inverter', label: 'Inverter' },
-              { id: 'pv', label: 'PV Panel' },
-              { id: 'batarya', label: 'Batarya' },
-              { id: 'altyapi', label: 'Altyapı' },
-              { id: 'ekstralar', label: 'Ekstralar' },
-            ].map((tab) => (
+            {pickerTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setPickerTab(tab.id as ProductSubTab)}
+                onClick={() => setPickerTab(tab.id)}
                 className={`px-5 py-3.5 rounded-2xl text-base font-extrabold whitespace-nowrap transition-all ${
                   pickerTab === tab.id
                     ? 'bg-[#00b8e6] text-[#111318] shadow-md'
@@ -826,10 +833,11 @@ export default function ProformaPage({
           </div>
         )}
 
-        {/* ÜRÜN LİSTESİ (FOTOĞRAFLI) */}
         {displayedPickerItems.length === 0 ? (
           <div className="p-8 rounded-2xl bg-[#111318] border border-[#262a34] border-dashed text-center text-base text-[#8a8f9e]">
-            Arama kriterine uygun ürün bulunamadı.
+            {normalizedSearch
+              ? 'Arama kriterine uygun ürün bulunamadı.'
+              : 'Bu kategoride henüz kayıtlı ürün yok.'}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
@@ -847,7 +855,6 @@ export default function ProformaPage({
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    {/* Ürün Fotoğrafı */}
                     <div className="w-14 h-14 rounded-xl bg-[#090a0d] border border-[#262a34] flex items-center justify-center overflow-hidden shrink-0">
                       {item.photo ? (
                         <img
@@ -930,7 +937,6 @@ export default function ProformaPage({
                   </div>
                 </div>
 
-                {/* ADET KONTROLÜ (Tamamen silip yeni sayı yazılabilir) */}
                 <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#262a34] shrink-0">
                   <div className="flex items-center gap-2">
                     <button
