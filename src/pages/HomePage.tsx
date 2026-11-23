@@ -1,14 +1,24 @@
-import { FileSpreadsheet, Package } from 'lucide-react';
-import { PRODUCT_SUB_MENUS } from '../components/Sidebar';
-import type { MainTab, ProductSubTab } from '../types/product';
+import { FileSpreadsheet, Package, Plus } from 'lucide-react';
+import { buildAllSubMenus } from '../components/Sidebar';
+import type { MainTab, ProductSubTab, CustomCategory } from '../types/product';
 
 interface HomePageProps {
   onNavigateMain: (tab: MainTab) => void;
   onNavigateProductSub: (sub: ProductSubTab) => void;
-  counts: Record<ProductSubTab, number>;
+  counts: Record<string, number>;
+  customCategories: CustomCategory[];
+  onOpenAddCategory: () => void;
 }
 
-export default function HomePage({ onNavigateMain, onNavigateProductSub, counts }: HomePageProps) {
+export default function HomePage({
+  onNavigateMain,
+  onNavigateProductSub,
+  counts,
+  customCategories,
+  onOpenAddCategory,
+}: HomePageProps) {
+  const allMenus = buildAllSubMenus(customCategories);
+
   return (
     <div className="space-y-6">
       <div className="bg-[#161920] border border-[#262a34] rounded-3xl p-6 sm:p-8 space-y-5">
@@ -38,9 +48,20 @@ export default function HomePage({ onNavigateMain, onNavigateProductSub, counts 
       </div>
 
       <div>
-        <h3 className="text-lg font-bold text-[#8a8f9e] mb-3 px-1">Ürün Kategorileri</h3>
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h3 className="text-lg font-bold text-[#8a8f9e]">Ürün Kategorileri</h3>
+          <button
+            type="button"
+            onClick={onOpenAddCategory}
+            className="text-sm font-extrabold text-[#00b8e6] hover:text-cyan-300 flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            Yeni Kategori
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {PRODUCT_SUB_MENUS.map((cat) => {
+          {allMenus.map((cat) => {
             const Icon = cat.icon;
             return (
               <button
@@ -51,21 +72,36 @@ export default function HomePage({ onNavigateMain, onNavigateProductSub, counts 
                 }}
                 className="bg-[#161920] border border-[#262a34] hover:border-[#00b8e6]/60 rounded-2xl p-5 flex items-center justify-between text-left transition-all"
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 min-w-0">
                   <div className="w-14 h-14 rounded-2xl bg-[#00b8e6]/10 border border-[#00b8e6]/30 flex items-center justify-center text-[#00b8e6] shrink-0">
                     <Icon className="w-7 h-7" />
                   </div>
-                  <div>
-                    <h4 className="font-extrabold text-lg text-white">{cat.label}</h4>
+                  <div className="min-w-0">
+                    <h4 className="font-extrabold text-lg text-white truncate">{cat.label}</h4>
                     <span className="text-sm text-[#8a8f9e]">Yönetmek için dokunun</span>
                   </div>
                 </div>
-                <span className="px-3.5 py-1.5 rounded-xl bg-[#111318] border border-[#262a34] text-[#00b8e6] font-extrabold text-base">
-                  {counts[cat.id]}
+                <span className="px-3.5 py-1.5 rounded-xl bg-[#111318] border border-[#262a34] text-[#00b8e6] font-extrabold text-base shrink-0">
+                  {counts[cat.id] ?? 0}
                 </span>
               </button>
             );
           })}
+
+          {/* YENİ KATEGORİ EKLE KARTI */}
+          <button
+            type="button"
+            onClick={onOpenAddCategory}
+            className="bg-[#161920]/60 border-2 border-dashed border-[#2c303a] hover:border-[#00b8e6] rounded-2xl p-5 flex items-center gap-4 text-left transition-all group"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-[#111318] border border-[#262a34] group-hover:border-[#00b8e6]/50 flex items-center justify-center text-[#00b8e6] shrink-0">
+              <Plus className="w-7 h-7" />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-lg text-[#00b8e6]">Yeni Kategori Ekle</h4>
+              <span className="text-sm text-[#8a8f9e]">Özel ürün grubu oluşturun</span>
+            </div>
+          </button>
         </div>
       </div>
     </div>
