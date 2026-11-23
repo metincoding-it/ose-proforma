@@ -48,7 +48,7 @@ export default defineConfig({
           }
         })
 
-        // 2. Yerel Görsel Proxy (/api/img-proxy) - PDF CORS engeli için
+        // 2. Dış Link Görsel Proxy'si (/api/img-proxy) - PDF CORS çözümü
         server.middlewares.use('/api/img-proxy', async (req, res) => {
           try {
             const parsedUrl = new URL(req.url || '', 'http://localhost')
@@ -62,11 +62,34 @@ export default defineConfig({
 
             const upstream = await fetch(targetUrl, {
               headers: {
-                'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                Accept: 'image/*,*/*;q=0.8',
               },
-              redirect: 'follow',
             })
 
             if (!upstream.ok) {
+              res.statusCode = upstream.status
+              res.end('Upstream error')
+              return
+            }
+
+            const contentType = upstream.headers.get('content-type') || 'image/jpeg'
+            const buffer = Buffer.from(await upstream.arrayBuffer())
+
+            res.setHeader('Content-Type', contentType)
+            res.setHeader('Access-Control-Allow-Origin', '*')
+            res.end(buffer)
+          } catch {
+            res.statusCode = 500
+            res.end('Proxy error')
+          }
+        })
+      },
+    },
+  ],
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: true,
+  },
+})
