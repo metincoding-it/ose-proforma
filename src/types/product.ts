@@ -1,5 +1,47 @@
 export type MainTab = 'home' | 'products' | 'proforma';
-export type ProductSubTab = 'inverter' | 'pv' | 'batarya' | 'altyapi' | 'ekstralar';
+
+export type BuiltInProductSubTab =
+  | 'inverter'
+  | 'pv'
+  | 'batarya'
+  | 'altyapi'
+  | 'ekstralar';
+
+// Hem yerleşik 5 kategori hem dinamik eklenecek kategoriler için
+export type ProductSubTab = BuiltInProductSubTab | (string & {});
+
+export type CategoryIconName =
+  | 'Box'
+  | 'Camera'
+  | 'Wind'
+  | 'Snowflake'
+  | 'Zap'
+  | 'Shield'
+  | 'Wrench'
+  | 'Plug'
+  | 'Lightbulb'
+  | 'Thermometer'
+  | 'Layers'
+  | 'Tag';
+
+// Dinamik Kategori Modeli
+export interface CustomCategory {
+  id: string;
+  label: string;
+  iconName: CategoryIconName;
+}
+
+// Dinamik Kategori Ürün Modeli
+export interface CustomProduct {
+  id: string;
+  categoryId: string;
+  photo: string;
+  brand: string;
+  name: string;
+  specs: string;
+  unit: string;
+  priceUsd: number;
+}
 
 // 1. INVERTER MODELİ
 export interface InverterProduct {
@@ -117,17 +159,12 @@ export interface ExtraProduct {
   priceUsd: number;
 }
 
-
-
-
-// ================= VARSAYILAN BAŞLANGIÇ VERİLERİ =================
+// ================= BAŞLANGIÇ VERİLERİ (BOŞ) =================
 
 export const INITIAL_INVERTERS: InverterProduct[] = [];
-
 export const INITIAL_PVS: PvProduct[] = [];
-
 export const INITIAL_BATTERIES: BatteryProduct[] = [];
-
 export const INITIAL_INFRASTRUCTURE: InfrastructureProduct[] = [];
-
 export const INITIAL_EXTRAS: ExtraProduct[] = [];
+export const INITIAL_CUSTOM_CATEGORIES: CustomCategory[] = [];
+export const INITIAL_CUSTOM_PRODUCTS: CustomProduct[] = [];
