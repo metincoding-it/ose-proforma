@@ -111,20 +111,40 @@ function buildCustomSummary(item: CustomProduct, categoryLabel: string): string 
   return `${categoryLabel} Donanımı`;
 }
 
-function loadImageSafe(src?: string): Promise<HTMLImageElement | null> {
+// Tekil görsel yükleyici
+function tryLoadImage(src: string, useCors: boolean): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
-    if (!src || !src.trim()) {
-      resolve(null);
-      return;
-    }
     const img = new Image();
-    if (!src.startsWith('data:')) {
+    if (useCors) {
       img.crossOrigin = 'anonymous';
     }
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
     img.src = src;
   });
+}
+
+// PDF Canvas için CORS engeline takılmayan akıllı görsel yükleyici
+async function loadImageSafe(src?: string): Promise<HTMLImageElement | null> {
+  if (!src || !src.trim()) return null;
+  const trimmed = src.trim();
+
+  // Base64 veya yerel dosya (/logo.png) ise doğrudan yükle
+  if (trimmed.startsWith('data:') || trimmed.startsWith('/')) {
+    return tryLoadImage(trimmed, false);
+  }
+
+  // Dış URL (http/https) ise önce kendi proxy'mizden çek (CORS engelini tamamen aşar)
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    const proxiedUrl = `/api/img-proxy?url=${encodeURIComponent(trimmed)}`;
+    const proxiedImg = await tryLoadImage(proxiedUrl, true);
+    if (proxiedImg) return proxiedImg;
+
+    // Proxy yanıt vermezse doğrudan CORS ile dene
+    return tryLoadImage(trimmed, true);
+  }
+
+  return tryLoadImage(trimmed, true);
 }
 
 function drawContainImage(
@@ -252,7 +272,7 @@ export default function ProformaPage({
     }
   }, []);
 
-  // Sekme listesi: Yerleşik 5 kategori + Dinamik eklenen kategoriler
+  // Sekme listesi: Yerleşik 5 kategori + Dinamik eklenen tüm kategoriler
   const pickerTabs: { id: ProductSubTab; label: string }[] = [
     { id: 'inverter', label: 'Inverter' },
     { id: 'pv', label: 'PV Panel' },
@@ -563,6 +583,7 @@ export default function ProformaPage({
       ctx.textAlign = 'center';
       ctx.fillText('MİKTAR', colQtyCenterX, thCenterY);
 
+      // Tüm ürün fotoğraflarını proxy üzerinden güvenli şekilde yükle
       const loadedProductPhotos = await Promise.all(
         selectedItems.map((item) => loadImageSafe(item.photo))
       );
@@ -764,7 +785,7 @@ export default function ProformaPage({
                   inputMode="decimal"
                   value={usdRateInput}
                   onChange={(e) => handleRateChange(e.target.value)}
-                  placeholder="Örn: 49.95"
+                  placeholder="Örn: 50.24"
                   className="w-full bg-[#111318] border border-[#00b8e6]/60 focus:border-[#00b8e6] rounded-2xl pl-4 pr-10 py-4 text-lg font-extrabold text-white focus:outline-none"
                 />
                 <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm font-extrabold text-[#00b8e6]">
@@ -810,22 +831,36 @@ export default function ProformaPage({
           )}
         </div>
 
+        {/* TÜM KATEGORİLER ALT SATIRA OTOMATİK AKAR (FLEX-WRAP) */}
         {!normalizedSearch ? (
-          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-            {pickerTabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setPickerTab(tab.id)}
-                className={`px-5 py-3.5 rounded-2xl text-base font-extrabold whitespace-nowrap transition-all ${
-                  pickerTab === tab.id
-                    ? 'bg-[#00b8e6] text-[#111318] shadow-md'
-                    : 'bg-[#111318] text-zinc-300 border border-[#262a34]'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-2.5">
+            {pickerTabs.map((tab) => {
+              const count = allPickerItems.filter((item) => item.tab === tab.id).length;
+              const isActive = pickerTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setPickerTab(tab.id)}
+                  className={`px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl sm:rounded-2xl text-sm sm:text-base font-extrabold flex items-center gap-2 transition-all ${
+                    isActive
+                      ? 'bg-[#00b8e6] text-[#111318] shadow-md'
+                      : 'bg-[#111318] text-zinc-300 border border-[#262a34] hover:border-[#383c47]'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-lg font-extrabold ${
+                      isActive
+                        ? 'bg-[#111318]/20 text-[#111318]'
+                        : 'bg-[#232730] text-[#8a8f9e]'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         ) : (
           <div className="text-sm font-bold text-[#00b8e6] px-1">
