@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Cloudflare yerel geliştirme
+.wrangler
+.dev.vars

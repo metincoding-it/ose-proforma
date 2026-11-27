@@ -1,24 +1,103 @@
+@font-face { font-family: 'Inter'; font-weight: 400; font-display: swap; src: url('/fonts/Inter-400Regular.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-weight: 600; font-display: swap; src: url('/fonts/Inter-600SemiBold.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-weight: 700; font-display: swap; src: url('/fonts/Inter-700Bold.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-weight: 800 900; font-display: swap; src: url('/fonts/Inter-800ExtraBold.ttf') format('truetype'); }
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root,
+.dark {
+  --bg: 15 17 22;
+  --surface: 22 25 32;
+  --surface-2: 29 33 42;
+  --surface-3: 38 43 54;
+  --line: 44 49 61;
+  --fg: 241 243 247;
+  --muted: 140 147 163;
+  --primary: 0 184 230;
+  --primary-fg: 10 14 20;
+  color-scheme: dark;
+}
+
+.light {
+  --bg: 244 246 250;
+  --surface: 255 255 255;
+  --surface-2: 246 248 251;
+  --surface-3: 236 240 245;
+  --line: 224 229 237;
+  --fg: 15 23 42;
+  --muted: 100 112 132;
+  --primary: 0 146 196;
+  --primary-fg: 255 255 255;
+  color-scheme: light;
+}
+
 html {
-  font-size: 16px;
   -webkit-tap-highlight-color: transparent;
+  text-size-adjust: 100%;
 }
 
 body {
-  background-color: #111318;
-  color: #f4f4f5;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  overflow-x: hidden;
+  @apply bg-bg text-fg font-sans antialiased;
+  font-feature-settings: 'cv11', 'ss01';
   line-height: 1.5;
 }
 
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+@layer components {
+  .card {
+    @apply bg-surface border border-line rounded-2xl;
+  }
+  .label {
+    @apply block text-[13px] font-semibold text-muted mb-1.5;
+  }
+  .input {
+    @apply w-full bg-surface-2 border border-line rounded-xl px-3.5 py-2.5 text-[15px] text-fg placeholder:text-muted/70
+      focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition disabled:opacity-60;
+  }
+  .input-sm {
+    @apply w-full bg-surface-2 border border-line rounded-lg px-2.5 py-1.5 text-sm text-fg placeholder:text-muted/70
+      focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition select-none
+      disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap;
+  }
+  .btn-primary {
+    @apply btn bg-primary text-primary-fg hover:brightness-110 active:brightness-95;
+  }
+  .btn-secondary {
+    @apply btn bg-surface-2 border border-line text-fg hover:bg-surface-3;
+  }
+  .btn-ghost {
+    @apply btn text-muted hover:text-fg hover:bg-surface-2;
+  }
+  .btn-danger {
+    @apply btn bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/25;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-[13px] rounded-lg;
+  }
+  .btn-icon {
+    @apply inline-flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-fg hover:bg-surface-2 transition;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wide;
+  }
+  .table-head {
+    @apply text-left text-[12px] font-bold uppercase tracking-wide text-muted;
+  }
 }
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type='number'] { -moz-appearance: textfield; }
+
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+@keyframes slide-up { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+.animate-in { animation: slide-up 0.18s ease-out; }
