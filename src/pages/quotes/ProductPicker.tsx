@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Search, Plus, Layers, Check, Minus } from 'lucide-react';
-import type { Kit, Product, QuoteLine } from '../../../shared/types';
+import type { CategoryGroup, Kit, Product, QuoteLine } from '../../../shared/types';
+import { GROUP_LABEL, MAIN_GROUPS } from '../../../shared/types';
 import { productSummary, productTitle } from '../../../shared/catalog';
 import { useData } from '../../lib/store';
 import { fmtMoney } from '../../lib/format';
@@ -13,12 +14,14 @@ export default function ProductPicker({
   onAdd,
   existing,
   initialTab = 'products',
+  group = '',
 }: {
   open: boolean;
   onClose: () => void;
   onAdd: (lines: QuoteLine[]) => void;
   existing: QuoteLine[];
   initialTab?: 'products' | 'kits';
+  group?: CategoryGroup;
 }) {
   const { categories, products, kits, categoryMap, productMap } = useData();
   const [tab, setTab] = useState<'products' | 'kits'>(initialTab);
@@ -26,10 +29,22 @@ export default function ProductPicker({
   const [q, setQ] = useState('');
   const [kitQty, setKitQty] = useState<Record<string, number>>({});
   const [lastTab, setLastTab] = useState(initialTab);
+  const [grp, setGrp] = useState<CategoryGroup | 'all'>(group || 'all');
+  const [wasOpen, setWasOpen] = useState(false);
   if (open && initialTab !== lastTab) {
     setLastTab(initialTab);
     setTab(initialTab);
   }
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setGrp(group || 'all');
+      setCat('all');
+    }
+  }
+  const groupsInUse = useMemo(() => (['', ...MAIN_GROUPS] as CategoryGroup[]).filter((g) => categories.some((c) => c.group === g)), [categories]);
+  const visibleCats = grp === 'all' ? categories : categories.filter((c) => c.group === grp);
+  const finePointer = typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches;
 
   const counts = useMemo(() => {
     const m = new Map<string, number>();
@@ -41,12 +56,13 @@ export default function ProductPicker({
     const s = q.trim().toLocaleLowerCase('tr');
     return products.filter((p) => {
       if (!p.active) return false;
+      if (!s && grp !== 'all' && (categoryMap.get(p.categoryId)?.group || '') !== grp) return false;
       if (!s && cat !== 'all' && p.categoryId !== cat) return false;
       if (!s) return true;
       const hay = `${p.sku} ${p.brand} ${p.name} ${p.description} ${Object.values(p.specs).join(' ')} ${categoryMap.get(p.categoryId)?.label || ''}`.toLocaleLowerCase('tr');
       return s.split(/\s+/).every((w) => hay.includes(w));
     });
-  }, [products, q, cat, categoryMap]);
+  }, [products, q, cat, grp, categoryMap]);
 
   const addProduct = (p: Product) => onAdd([lineFromProduct(p, categoryMap.get(p.categoryId))]);
 
@@ -87,11 +103,27 @@ export default function ProductPicker({
         <>
           <div className="relative mb-3">
             <Search className="w-5 h-5 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-            <input className="input pl-10" placeholder="Marka, model, stok kodu veya özellik ara..." value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+            <input className="input pl-10" type="search" enterKeyHint="search" placeholder="Marka, model, stok kodu veya özellik ara..." value={q} onChange={(e) => setQ(e.target.value)} autoFocus={finePointer} />
           </div>
+          {!q && groupsInUse.length > 1 && (
+            <div className="flex gap-1 p-1 mb-2 rounded-xl bg-surface-2 border border-line overflow-x-auto no-scrollbar">
+              {(['all', ...groupsInUse] as (CategoryGroup | 'all')[]).map((g) => (
+                <button
+                  key={g || 'genel'}
+                  onClick={() => {
+                    setGrp(g);
+                    setCat('all');
+                  }}
+                  className={`flex-1 shrink-0 px-3 py-1.5 rounded-lg text-[13px] font-bold whitespace-nowrap ${grp === g ? 'bg-primary text-primary-fg shadow' : 'text-muted'}`}
+                >
+                  {g === 'all' ? 'Tümü' : GROUP_LABEL[g]}
+                </button>
+              ))}
+            </div>
+          )}
           {!q && (
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-3">
-              {[{ id: 'all', label: 'Tümü', icon: 'Package' }, ...categories].map((c) => (
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-3 -mx-4 px-4 sm:mx-0 sm:px-0">
+              {[{ id: 'all', label: 'Tümü', icon: 'Package' }, ...visibleCats].map((c) => (
                 <button
                   key={c.id}
                   onClick={() => setCat(c.id)}

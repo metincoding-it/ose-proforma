@@ -13,6 +13,8 @@ export interface PdfInput {
   accent?: string;
   publicUrl?: string | null;
   proxyToken?: string | null;
+  /** Ana kategori şablonundan gelen başlık metinleri */
+  template?: { title?: string; subtitle?: string; slogan?: string };
 }
 
 // ---------------- yardımcılar ----------------
@@ -165,8 +167,9 @@ export async function buildQuotePdf(input: PdfInput): Promise<Blob> {
   doc.text(company.name || 'Firma', x, 15.5);
   font('normal', 8, MUTED);
   let hy = 20;
-  if (company.slogan) {
-    doc.text(company.slogan, x, hy);
+  const slogan = input.template?.slogan || company.slogan;
+  if (slogan) {
+    doc.text(slogan, x, hy);
     hy += 4;
   }
   const addr = [company.address, company.city].filter(Boolean).join(', ');
@@ -186,10 +189,14 @@ export async function buildQuotePdf(input: PdfInput): Promise<Blob> {
     hy += 3.6;
   }
 
-  font('heavy', 17, accent);
-  doc.text('FİYAT TEKLİFİ', PW - M, 16, { align: 'right' });
-  font('semibold', 7.5, MUTED);
-  doc.text('PROFORMA', PW - M, 20.5, { align: 'right', charSpace: 1.2 });
+  const pdfTitle = (input.template?.title ?? 'FİYAT TEKLİFİ') || 'FİYAT TEKLİFİ';
+  const pdfSub = input.template?.subtitle ?? 'PROFORMA';
+  font('heavy', pdfTitle.length > 16 ? 14 : 17, accent);
+  doc.text(pdfTitle, PW - M, 16, { align: 'right' });
+  if (pdfSub) {
+    font('semibold', 7.5, MUTED);
+    doc.text(pdfSub, PW - M, 20.5, { align: 'right', charSpace: 1.2 });
+  }
 
   // ---------- 2. MÜŞTERİ + TEKLİF BİLGİLERİ ----------
   let y = Math.max(36, hy + 4);
@@ -275,6 +282,22 @@ export async function buildQuotePdf(input: PdfInput): Promise<Blob> {
       doc.text(chips.join('    •    '), q.title ? M + 30 : M + 4, ty);
     }
     y += h + 4;
+  }
+
+  // Ön yazı
+  const intro = (q.terms.intro || '').trim();
+  if (intro) {
+    const salutation = c.name ? `Sayın ${c.name},` : c.company ? `Sayın ${c.company} yetkilisi,` : '';
+    font('normal', 8.3, [51, 65, 85]);
+    const lines = doc.splitTextToSize(intro, CW) as string[];
+    if (salutation) {
+      font('semibold', 8.3, INK);
+      doc.text(salutation, M, y + 1);
+      y += 4.6;
+      font('normal', 8.3, [51, 65, 85]);
+    }
+    doc.text(lines, M, y + 1, { lineHeightFactor: 1.45 });
+    y += lines.length * 8.3 * 0.3528 * 1.45 + 4;
   }
 
   // ---------- 3. KALEM TABLOSU ----------
@@ -729,6 +752,19 @@ export function pdfFileName(q: Quote) {
 }
 
 export async function savePdf(blob: Blob, fileName: string, mode: 'download' | 'preview') {
+  // Telefonda: paylaşım menüsü (WhatsApp, Dosyalar'a kaydet, e-posta...) – iOS PWA'da blob indirme güvenilir değil
+  if (mode === 'download' && typeof navigator !== 'undefined' && 'canShare' in navigator && window.matchMedia('(pointer: coarse)').matches) {
+    try {
+      const file = new File([blob], fileName, { type: 'application/pdf' });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: fileName.replace(/\.pdf$/i, '') });
+        return;
+      }
+    } catch (e) {
+      // Kullanıcı paylaşımı kapattıysa sessizce çık; diğer hatalarda klasik indirmeye düş
+      if ((e as Error)?.name === 'AbortError') return;
+    }
+  }
   const url = URL.createObjectURL(blob);
   if (mode === 'preview') {
     const w = window.open(url, '_blank');

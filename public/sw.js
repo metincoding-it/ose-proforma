@@ -1,7 +1,7 @@
 // OSE Proforma – hafif service worker
 // - Uygulama kabuğu ve /assets/* önbelleklenir (çevrimdışı açılış)
 // - /api/* asla önbelleğe alınmaz (her zaman canlı veri)
-const VERSION = 'ose-v2';
+const VERSION = 'ose-v2.1';
 const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/logo.png'];
 
 self.addEventListener('install', (event) => {

@@ -47,12 +47,57 @@ export interface SpecField {
   short?: boolean;
 }
 
-export type CategoryRole = '' | 'inverter' | 'pv' | 'battery' | 'infra' | 'service';
+/** Ana kategori (iş kolu). '' = Genel / atanmamış */
+export type CategoryGroup = '' | 'zayif' | 'solar' | 'elektronik';
+export type MainGroup = Exclude<CategoryGroup, ''>;
+export const MAIN_GROUPS: MainGroup[] = ['zayif', 'solar', 'elektronik'];
+export const GROUP_LABEL: Record<CategoryGroup, string> = {
+  '': 'Genel',
+  zayif: 'Zayıf Akım',
+  solar: 'Solar',
+  elektronik: 'Ev Elektroniği',
+};
+export const GROUP_ICON: Record<CategoryGroup, string> = {
+  '': 'Box',
+  zayif: 'Cctv',
+  solar: 'Sun',
+  elektronik: 'Tv',
+};
+
+/**
+ * Kategori rolü. Solar rolleri GES asistanı tarafından kullanılır;
+ * diğerleri sınıflandırma ve ileride eklenecek asistanlar içindir.
+ */
+export type CategoryRole =
+  | ''
+  // Solar
+  | 'inverter'
+  | 'pv'
+  | 'battery'
+  | 'infra'
+  | 'service'
+  // Zayıf akım
+  | 'camera'
+  | 'recorder'
+  | 'network'
+  | 'alarm'
+  | 'intercom'
+  | 'ws-accessory'
+  | 'ws-service'
+  // Ev elektroniği
+  | 'appliance'
+  | 'tv'
+  | 'climate'
+  | 'smarthome'
+  | 'small-appliance'
+  | 'el-accessory'
+  | 'el-service';
 
 export interface Category {
   id: string;
   label: string;
   icon: string;
+  group: CategoryGroup;
   role: CategoryRole;
   fields: SpecField[];
   sort: number;
@@ -155,6 +200,8 @@ export interface PaymentPlanRow {
 }
 
 export interface QuoteTerms {
+  /** PDF'te kalem tablosundan önce görünen ön yazı */
+  intro?: string;
   paymentPlan: PaymentPlanRow[];
   delivery: string;
   warranty: string;
@@ -166,6 +213,8 @@ export interface QuoteOptions {
   showPhotos: boolean;
   showTryEquivalent: boolean;
   brochureIds: string[];
+  /** Teklif türü – PDF metin şablonu bu ana kategoriye göre seçilir */
+  group?: CategoryGroup;
 }
 
 export interface GesInfo {
@@ -303,12 +352,34 @@ export interface CompanySettings {
   stamp: string;
 }
 
+/** Ana kategoriye özel proforma PDF metinleri */
+export interface PdfTemplate {
+  /** Sağ üstteki büyük başlık (örn: FİYAT TEKLİFİ) */
+  title: string;
+  /** Başlık altındaki küçük yazı (örn: PROFORMA) */
+  subtitle: string;
+  /** Antette firma adının altındaki faaliyet satırı; boşsa firma sloganı kullanılır */
+  slogan: string;
+  /** Kalem tablosundan önce müşteriye hitap paragrafı */
+  intro: string;
+  /** Boşsa genel vurgu rengi kullanılır */
+  accentColor: string;
+  paymentPlan: PaymentPlanRow[];
+  delivery: string;
+  warranty: string;
+  notes: string;
+}
+export type PdfTemplateKey = 'genel' | MainGroup;
+export const PDF_TEMPLATE_KEYS: PdfTemplateKey[] = ['genel', 'zayif', 'solar', 'elektronik'];
+export const templateKey = (g?: CategoryGroup | null): PdfTemplateKey => (g ? g : 'genel');
+
 export interface QuoteSettings {
   prefix: string;
   validityDays: number;
   defaultCurrency: Currency;
   defaultVatRate: number;
   defaultVatMode: VatMode;
+  /** @deprecated v2.1'den itibaren AppSettings.pdf.genel kullanılır (eski kayıtlar için tutulur) */
   paymentPlan: PaymentPlanRow[];
   delivery: string;
   warranty: string;
@@ -340,6 +411,7 @@ export interface AppSettings {
   banks: BankAccount[];
   notify: NotifySettings;
   ges: GesSettings;
+  pdf: Record<PdfTemplateKey, PdfTemplate>;
 }
 
 export interface Brochure {

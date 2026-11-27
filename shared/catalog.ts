@@ -1,4 +1,5 @@
-import type { Category, CategoryRole, Product, SpecField, AppSettings } from './types';
+import type { Category, CategoryGroup, CategoryRole, Product, SpecField, AppSettings, PdfTemplate, PdfTemplateKey, MainGroup } from './types';
+import { PDF_TEMPLATE_KEYS } from './types';
 
 export const UNIT_OPTIONS = ['Adet', 'Metre', 'Set', 'Takım', 'Boy', 'Paket', 'kWp', 'm²', 'Saat', 'Gün', 'Hizmet', 'Kalem'];
 
@@ -20,9 +21,53 @@ export const MOUNT_TYPES = [
   'Pano İçi / Elektrik',
 ];
 
-export const FIELD_PRESETS: Record<string, { label: string; role: CategoryRole; icon: string; fields: SpecField[] }> = {
+/** Ana kategorilere göre gruplanmış roller (kategori formundaki "Rol" listesi) */
+export const ROLE_OPTIONS: Record<MainGroup, { v: CategoryRole; label: string; hint?: string }[]> = {
+  solar: [
+    { v: 'pv', label: 'PV Panel', hint: 'GES asistanı' },
+    { v: 'inverter', label: 'Inverter', hint: 'GES asistanı' },
+    { v: 'battery', label: 'Batarya', hint: 'GES asistanı' },
+    { v: 'infra', label: 'Altyapı / Montaj', hint: 'GES asistanı' },
+    { v: 'service', label: 'Hizmet / İşçilik', hint: 'GES asistanı' },
+  ],
+  zayif: [
+    { v: 'camera', label: 'Güvenlik Kamerası' },
+    { v: 'recorder', label: 'Kayıt Cihazı (NVR/DVR)' },
+    { v: 'network', label: 'Ağ / Switch / Wi-Fi' },
+    { v: 'alarm', label: 'Alarm & Yangın' },
+    { v: 'intercom', label: 'Diafon / İnterkom / Geçiş' },
+    { v: 'ws-accessory', label: 'Kablo & Aksesuar' },
+    { v: 'ws-service', label: 'Hizmet / İşçilik' },
+  ],
+  elektronik: [
+    { v: 'appliance', label: 'Beyaz Eşya' },
+    { v: 'tv', label: 'TV & Görüntü / Ses' },
+    { v: 'climate', label: 'Klima & Isıtma' },
+    { v: 'smarthome', label: 'Akıllı Ev' },
+    { v: 'small-appliance', label: 'Küçük Ev Aletleri' },
+    { v: 'el-accessory', label: 'Aksesuar' },
+    { v: 'el-service', label: 'Hizmet / Kurulum' },
+  ],
+};
+
+/** Rolden ana kategoriyi bulur ('' rolü için '') */
+export function groupOfRole(role: CategoryRole | string): CategoryGroup {
+  for (const [g, list] of Object.entries(ROLE_OPTIONS)) if (list.some((r) => r.v === role)) return g as MainGroup;
+  return '';
+}
+
+export function roleLabel(role: CategoryRole | string): string {
+  for (const list of Object.values(ROLE_OPTIONS)) {
+    const r = list.find((x) => x.v === role);
+    if (r) return r.label;
+  }
+  return 'Genel';
+}
+
+export const FIELD_PRESETS: Record<string, { label: string; group: CategoryGroup; role: CategoryRole; icon: string; fields: SpecField[] }> = {
   inverter: {
     label: 'Inverter',
+    group: 'solar',
     role: 'inverter',
     icon: 'Cpu',
     fields: [
@@ -38,6 +83,7 @@ export const FIELD_PRESETS: Record<string, { label: string; role: CategoryRole; 
   },
   pv: {
     label: 'PV Panel',
+    group: 'solar',
     role: 'pv',
     icon: 'Sun',
     fields: [
@@ -53,6 +99,7 @@ export const FIELD_PRESETS: Record<string, { label: string; role: CategoryRole; 
   },
   battery: {
     label: 'Batarya',
+    group: 'solar',
     role: 'battery',
     icon: 'BatteryCharging',
     fields: [
@@ -75,6 +122,7 @@ export const FIELD_PRESETS: Record<string, { label: string; role: CategoryRole; 
   },
   infra: {
     label: 'Altyapı & Montaj',
+    group: 'solar',
     role: 'infra',
     icon: 'Network',
     fields: [
@@ -84,10 +132,11 @@ export const FIELD_PRESETS: Record<string, { label: string; role: CategoryRole; 
       { key: 'warrantyStandard', label: 'Garanti / Standart' },
     ],
   },
-  service: { label: 'Hizmet & Ekstra', role: 'service', icon: 'Wrench', fields: [] },
+  service: { label: 'Hizmet & Ekstra', group: 'solar', role: 'service', icon: 'Wrench', fields: [] },
   camera: {
     label: 'Güvenlik Kamerası',
-    role: '',
+    group: 'zayif',
+    role: 'camera',
     icon: 'Camera',
     fields: [
       { key: 'resolution', label: 'Çözünürlük', unit: 'MP', type: 'number', short: true },
@@ -100,7 +149,8 @@ export const FIELD_PRESETS: Record<string, { label: string; role: CategoryRole; 
   },
   recorder: {
     label: 'Kayıt Cihazı (NVR/DVR)',
-    role: '',
+    group: 'zayif',
+    role: 'recorder',
     icon: 'HardDrive',
     fields: [
       { key: 'channels', label: 'Kanal', unit: 'Kanal', type: 'number', short: true },
@@ -109,15 +159,75 @@ export const FIELD_PRESETS: Record<string, { label: string; role: CategoryRole; 
       { key: 'hdd', label: 'Disk Yuvası', type: 'number' },
     ],
   },
-  generic: { label: 'Genel', role: '', icon: 'Box', fields: [] },
+  network: {
+    label: 'Ağ / Switch',
+    group: 'zayif',
+    role: 'network',
+    icon: 'Router',
+    fields: [
+      { key: 'ports', label: 'Port', type: 'number', short: true },
+      { key: 'poe', label: 'PoE', type: 'select', options: ['PoE', 'PoE+', 'Yok'], short: true },
+      { key: 'speed', label: 'Hız', type: 'select', options: ['10/100', 'Gigabit', '10G'] },
+      { key: 'managed', label: 'Yönetim', type: 'select', options: ['Yönetilemez', 'Akıllı', 'Yönetilebilir'] },
+    ],
+  },
+  alarm: {
+    label: 'Alarm & Yangın',
+    group: 'zayif',
+    role: 'alarm',
+    icon: 'Siren',
+    fields: [
+      { key: 'alarmType', label: 'Tip', type: 'select', options: ['Panel', 'PIR Dedektör', 'Manyetik Kontak', 'Siren', 'Duman Dedektörü', 'Tuş Takımı'], short: true },
+      { key: 'connection', label: 'Bağlantı', type: 'select', options: ['Kablolu', 'Kablosuz', 'Hibrit'], short: true },
+      { key: 'zones', label: 'Zon', type: 'number' },
+    ],
+  },
+  appliance: {
+    label: 'Beyaz Eşya',
+    group: 'elektronik',
+    role: 'appliance',
+    icon: 'Refrigerator',
+    fields: [
+      { key: 'applianceType', label: 'Tip', type: 'select', options: ['Buzdolabı', 'Çamaşır Makinesi', 'Bulaşık Makinesi', 'Kurutma Makinesi', 'Fırın', 'Ocak', 'Derin Dondurucu'], short: true },
+      { key: 'energyClass', label: 'Enerji Sınıfı', type: 'select', options: ['A', 'B', 'C', 'D', 'E', 'F'], short: true },
+      { key: 'capacity', label: 'Kapasite' },
+      { key: 'color', label: 'Renk' },
+      { key: 'warranty', label: 'Garanti', unit: 'Yıl', type: 'number' },
+    ],
+  },
+  tv: {
+    label: 'TV & Görüntü',
+    group: 'elektronik',
+    role: 'tv',
+    icon: 'Tv',
+    fields: [
+      { key: 'screen', label: 'Ekran', unit: '"', type: 'number', short: true },
+      { key: 'panel', label: 'Panel', type: 'select', options: ['LED', 'QLED', 'OLED', 'Mini LED'], short: true },
+      { key: 'resolution', label: 'Çözünürlük', type: 'select', options: ['HD', 'Full HD', '4K UHD', '8K'] },
+      { key: 'smart', label: 'Akıllı TV', type: 'select', options: ['Evet', 'Hayır'] },
+    ],
+  },
+  climate: {
+    label: 'Klima',
+    group: 'elektronik',
+    role: 'climate',
+    icon: 'AirVent',
+    fields: [
+      { key: 'btu', label: 'Kapasite', unit: 'BTU', type: 'number', short: true },
+      { key: 'climateType', label: 'Tip', type: 'select', options: ['Duvar Tipi', 'Salon Tipi', 'Kaset', 'Kanal', 'Multi'], short: true },
+      { key: 'inverterTech', label: 'Inverter', type: 'select', options: ['Evet', 'Hayır'] },
+      { key: 'energyClass', label: 'Enerji Sınıfı', type: 'select', options: ['A+++', 'A++', 'A+', 'A'] },
+    ],
+  },
+  generic: { label: 'Genel', group: '', role: '', icon: 'Box', fields: [] },
 };
 
 export const BUILTIN_CATEGORIES: Category[] = [
-  { id: 'inverter', label: 'Inverter', icon: 'Cpu', role: 'inverter', fields: FIELD_PRESETS.inverter.fields, sort: 1 },
-  { id: 'pv', label: 'PV Panel', icon: 'Sun', role: 'pv', fields: FIELD_PRESETS.pv.fields, sort: 2 },
-  { id: 'batarya', label: 'Batarya', icon: 'BatteryCharging', role: 'battery', fields: FIELD_PRESETS.battery.fields, sort: 3 },
-  { id: 'altyapi', label: 'Altyapı & Montaj', icon: 'Network', role: 'infra', fields: FIELD_PRESETS.infra.fields, sort: 4 },
-  { id: 'ekstralar', label: 'Hizmet & Ekstra', icon: 'Wrench', role: 'service', fields: [], sort: 5 },
+  { id: 'inverter', label: 'Inverter', icon: 'Cpu', group: 'solar', role: 'inverter', fields: FIELD_PRESETS.inverter.fields, sort: 1 },
+  { id: 'pv', label: 'PV Panel', icon: 'Sun', group: 'solar', role: 'pv', fields: FIELD_PRESETS.pv.fields, sort: 2 },
+  { id: 'batarya', label: 'Batarya', icon: 'BatteryCharging', group: 'solar', role: 'battery', fields: FIELD_PRESETS.battery.fields, sort: 3 },
+  { id: 'altyapi', label: 'Altyapı & Montaj', icon: 'Network', group: 'solar', role: 'infra', fields: FIELD_PRESETS.infra.fields, sort: 4 },
+  { id: 'ekstralar', label: 'Hizmet & Ekstra', icon: 'Wrench', group: 'solar', role: 'service', fields: [], sort: 5 },
 ];
 
 const isValue = (v?: string) => !!v && v.trim() !== '' && v.trim() !== '-';
@@ -188,15 +298,101 @@ export const DEFAULT_SETTINGS: AppSettings = {
   banks: [],
   notify: { email: '', fromEmail: 'OSE Proforma <onboarding@resend.dev>', onApprove: true, onRevision: true, onView: false },
   ges: { specificYield: 1450, dcAcMax: 1.3 },
+  pdf: {} as AppSettings['pdf'],
 };
+
+const tpl = (p: Partial<PdfTemplate>): PdfTemplate => ({
+  title: 'FİYAT TEKLİFİ',
+  subtitle: 'PROFORMA',
+  slogan: '',
+  intro: '',
+  accentColor: '',
+  paymentPlan: [],
+  delivery: '',
+  warranty: '',
+  notes: '',
+  ...p,
+});
+
+const TL_NOTE = "Döviz bazlı fiyatlar ödeme günündeki TCMB döviz satış kuru üzerinden TL'ye çevrilir.";
+
+export const DEFAULT_PDF: Record<PdfTemplateKey, PdfTemplate> = {
+  genel: tpl({
+    paymentPlan: [
+      { label: 'Sipariş onayında peşin', pct: 50 },
+      { label: 'Teslimatta', pct: 50 },
+    ],
+    delivery: 'Sipariş onayından itibaren 7-15 iş günü içinde teslimat.',
+    warranty: 'Ürünler üretici garantisi kapsamındadır. İşçilik 2 yıl Ose Teknoloji garantisindedir.',
+    notes: TL_NOTE,
+  }),
+  solar: tpl({
+    slogan: 'Güneş Enerjisi Sistemleri (GES)',
+    intro: 'Talebiniz doğrultusunda hazırladığımız güneş enerjisi sistemi teklifimizi bilgilerinize sunarız.',
+    paymentPlan: [
+      { label: 'Sipariş onayında peşin', pct: 50 },
+      { label: 'Malzeme teslimatında', pct: 40 },
+      { label: 'Kurulum ve devreye alma sonrası', pct: 10 },
+    ],
+    delivery: 'Sipariş onayından itibaren 7-15 iş günü içinde kurulum.',
+    warranty:
+      'Paneller 12 yıl ürün / 25-30 yıl performans, inverter 5-10 yıl, bataryalar 5-10 yıl üretici garantisi. İşçilik 2 yıl Ose Teknoloji garantisindedir.',
+    notes: TL_NOTE,
+  }),
+  zayif: tpl({
+    slogan: 'Güvenlik Kamerası, Alarm & Zayıf Akım Sistemleri',
+    intro: 'Talebiniz doğrultusunda hazırladığımız güvenlik / zayıf akım sistemi teklifimizi bilgilerinize sunarız.',
+    paymentPlan: [
+      { label: 'Sipariş onayında peşin', pct: 50 },
+      { label: 'Kurulum tamamlandığında', pct: 50 },
+    ],
+    delivery: 'Sipariş onayından itibaren 3-7 iş günü içinde kurulum ve devreye alma.',
+    warranty:
+      'Kamera, kayıt cihazı ve aktif ürünler 2 yıl üretici garantisindedir. Hard diskler üretici garantisine tabidir. İşçilik 1 yıl Ose Teknoloji garantisindedir.',
+    notes: `Kablo güzergâhı keşif sonrası netleşir; keşifte belirlenen metrajı aşan kablo ve kanal ayrıca faturalandırılır. ${TL_NOTE}`,
+  }),
+  elektronik: tpl({
+    slogan: 'Ev Elektroniği & Beyaz Eşya',
+    paymentPlan: [{ label: 'Sipariş onayında peşin', pct: 100 }],
+    delivery: 'Stok durumuna göre 1-5 iş günü içinde teslimat.',
+    warranty: 'Ürünler 2 yıl üretici / distribütör garantisi kapsamındadır. Garanti işlemleri yetkili servis üzerinden yürütülür.',
+    notes: TL_NOTE,
+  }),
+};
+
+DEFAULT_SETTINGS.pdf = DEFAULT_PDF;
+
+/** Kalemlerin çoğunluğunun ait olduğu ana kategori (teklif türü tahmini) */
+export function dominantGroup(groups: CategoryGroup[]): CategoryGroup {
+  const m = new Map<CategoryGroup, number>();
+  for (const g of groups) if (g) m.set(g, (m.get(g) || 0) + 1);
+  let best: CategoryGroup = '';
+  let n = 0;
+  for (const [g, c] of m) if (c > n) [best, n] = [g, c];
+  return best;
+}
 
 export function mergeSettings(partial: Partial<AppSettings> | null | undefined): AppSettings {
   const p = partial || {};
+  const quote = { ...DEFAULT_SETTINGS.quote, ...(p.quote || {}) };
+  const storedPdf = (p.pdf || {}) as Partial<Record<PdfTemplateKey, Partial<PdfTemplate>>>;
+  // v2.0'dan gelen kurulumlar: teklif ayarlarındaki eski metinler Genel ve Solar şablonlarına taşınır
+  const legacy: Partial<PdfTemplate> | null = p.quote
+    ? { paymentPlan: quote.paymentPlan, delivery: quote.delivery, warranty: quote.warranty, notes: quote.notes }
+    : null;
+  const pdf = {} as Record<PdfTemplateKey, PdfTemplate>;
+  for (const k of PDF_TEMPLATE_KEYS) {
+    const base = { ...DEFAULT_PDF[k], ...(!p.pdf && legacy && (k === 'genel' || k === 'solar') ? legacy : {}) };
+    const merged = { ...base, ...(storedPdf[k] || {}) };
+    merged.paymentPlan = Array.isArray(merged.paymentPlan) ? merged.paymentPlan.map((x) => ({ ...x })) : [];
+    pdf[k] = merged;
+  }
   return {
     company: { ...DEFAULT_SETTINGS.company, ...(p.company || {}) },
-    quote: { ...DEFAULT_SETTINGS.quote, ...(p.quote || {}) },
+    quote,
     banks: Array.isArray(p.banks) ? p.banks : DEFAULT_SETTINGS.banks,
     notify: { ...DEFAULT_SETTINGS.notify, ...(p.notify || {}) },
     ges: { ...DEFAULT_SETTINGS.ges, ...(p.ges || {}) },
+    pdf,
   };
 }

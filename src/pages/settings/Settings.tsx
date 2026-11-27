@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { Building2, FileText, Landmark, BookImage, Bell, Sun, DatabaseBackup, Plus, Trash2, Upload, Download, Save, Send, FileUp, ChevronUp, ChevronDown, Eye } from 'lucide-react';
-import type { AppSettings, BankAccount, Brochure, Currency } from '../../../shared/types';
-import { CURRENCIES, VAT_RATES } from '../../../shared/types';
-import { mergeSettings } from '../../../shared/catalog';
+import { Building2, FileText, FileType2, Landmark, BookImage, Bell, Sun, DatabaseBackup, Plus, Trash2, Upload, Download, Save, Send, FileUp, ChevronUp, ChevronDown, Eye, RotateCcw } from 'lucide-react';
+import type { AppSettings, BankAccount, Brochure, Currency, PdfTemplate, PdfTemplateKey, Quote } from '../../../shared/types';
+import { CURRENCIES, GROUP_ICON, GROUP_LABEL, PDF_TEMPLATE_KEYS, VAT_RATES } from '../../../shared/types';
+import { DEFAULT_PDF, mergeSettings } from '../../../shared/catalog';
+import { emptyQuote, lineFromProduct, customLine, sectionLine } from '../quotes/quoteUtils';
+import PlanEditor from '../../components/PlanEditor';
 import { api, errMsg } from '../../lib/api';
 import { useData, useUi } from '../../lib/store';
 import { fileSize, fmtDateTime } from '../../lib/format';
-import { PageHeader, Field, ImageField, NumberInput, Segmented, Toggle, Spinner, compressImage } from '../../components/ui';
+import { PageHeader, Field, ImageField, NumberInput, Segmented, Toggle, Spinner, compressImage, DynIcon } from '../../components/ui';
 
-type Tab = 'company' | 'quote' | 'banks' | 'brochures' | 'notify' | 'ges' | 'data';
+type Tab = 'company' | 'quote' | 'pdf' | 'banks' | 'brochures' | 'notify' | 'ges' | 'data';
 const TABS: { id: Tab; label: string; icon: typeof Building2 }[] = [
   { id: 'company', label: 'Firma Bilgileri', icon: Building2 },
-  { id: 'quote', label: 'Teklif & PDF', icon: FileText },
+  { id: 'quote', label: 'Teklif Varsayılanları', icon: FileText },
+  { id: 'pdf', label: 'Proforma PDF', icon: FileType2 },
   { id: 'banks', label: 'Banka Hesapları', icon: Landmark },
   { id: 'brochures', label: 'Broşür Sayfaları', icon: BookImage },
   { id: 'notify', label: 'Bildirimler', icon: Bell },
@@ -109,6 +112,156 @@ function Brochures() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+const TPL_LABEL: Record<PdfTemplateKey, string> = { genel: 'Genel', zayif: GROUP_LABEL.zayif, solar: GROUP_LABEL.solar, elektronik: GROUP_LABEL.elektronik };
+const TPL_HINT: Record<PdfTemplateKey, string> = {
+  genel: 'Teklif türü seçilmemiş veya ana kategorisi olmayan teklifler',
+  zayif: 'Kamera, kayıt cihazı, alarm, network, diafon teklifleri',
+  solar: 'GES / güneş enerjisi teklifleri',
+  elektronik: 'Beyaz eşya, TV, klima, akıllı ev teklifleri',
+};
+
+function PdfTemplatesTab({ s, onChange }: { s: AppSettings; onChange: (key: PdfTemplateKey, patch: Partial<PdfTemplate>) => void }) {
+  const { products, categoryMap, brochures } = useData();
+  const { toast, confirm } = useUi();
+  const [key, setKey] = useState<PdfTemplateKey>('solar');
+  const [busy, setBusy] = useState(false);
+  const t = s.pdf[key];
+  const planSum = t.paymentPlan.reduce((a, p) => a + (Number(p.pct) || 0), 0);
+  const setPlan = (plan: PdfTemplate['paymentPlan']) => onChange(key, { paymentPlan: plan });
+
+  const copyFrom = async (from: PdfTemplateKey) => {
+    if (!(await confirm({ title: `${TPL_LABEL[from]} metinleri kopyalansın mı?`, message: `${TPL_LABEL[key]} şablonundaki ödeme planı, teslimat, garanti ve not metinleri ${TPL_LABEL[from]} şablonundakilerle değiştirilecek.`, confirmText: 'Kopyala' }))) return;
+    const f = s.pdf[from];
+    onChange(key, { paymentPlan: f.paymentPlan.map((p) => ({ ...p })), delivery: f.delivery, warranty: f.warranty, notes: f.notes, intro: f.intro });
+  };
+  const reset = async () => {
+    if (!(await confirm({ title: 'Varsayılan metinler yüklensin mi?', message: `${TPL_LABEL[key]} şablonu fabrika metinlerine döndürülecek.`, confirmText: 'Sıfırla', danger: true }))) return;
+    onChange(key, { ...DEFAULT_PDF[key], paymentPlan: DEFAULT_PDF[key].paymentPlan.map((p) => ({ ...p })) });
+  };
+
+  const preview = async () => {
+    setBusy(true);
+    try {
+      const group = key === 'genel' ? '' : key;
+      const q: Quote = emptyQuote(s, brochures, group);
+      const sample = products.filter((p) => p.active && (key === 'genel' || categoryMap.get(p.categoryId)?.group === key)).slice(0, 5);
+      q.number = `${s.quote.prefix}-ÖRNEK`;
+      q.title = `Örnek ${TPL_LABEL[key]} Teklifi`;
+      q.customer = { ...q.customer, company: 'Örnek Müşteri A.Ş.', name: 'Ahmet Yılmaz', phone: '0555 000 00 00', city: 'İstanbul' };
+      q.rates = { TRY: 1, USD: 42, EUR: 48 };
+      q.lines = sample.length
+        ? sample.map((p) => lineFromProduct(p, categoryMap.get(p.categoryId), 1))
+        : [sectionLine('ÖRNEK KALEMLER'), { ...customLine(q.currency, s.quote.defaultVatRate), title: 'Örnek ürün', summary: 'Teknik özet burada görünür', unitPrice: 1000 }, { ...customLine(q.currency, s.quote.defaultVatRate), title: 'Montaj ve işçilik', unitPrice: 250 }];
+      q.createdAt = new Date().toISOString();
+      const { buildQuotePdf, savePdf } = await import('../../pdf/quotePdf');
+      const blob = await buildQuotePdf({
+        quote: q,
+        company: s.company,
+        banks: s.banks,
+        brochures: [],
+        accent: t.accentColor || s.quote.accentColor,
+        template: { title: t.title, subtitle: t.subtitle, slogan: t.slogan },
+      });
+      await savePdf(blob, `Ornek_${key}.pdf`, 'preview');
+    } catch (e) {
+      toast('Önizleme oluşturulamadı: ' + errMsg(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <p className="text-sm text-muted">
+        Her ana kategori için proforma PDF'inde görünen metinleri ayrı ayrı kaydedin. Teklif ekranında <b>teklif türü</b> seçildiğinde (veya eklenen ürünlerden otomatik belirlendiğinde) ilgili şablon teklife uygulanır; teklif bazında yine düzenlenebilir.
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {PDF_TEMPLATE_KEYS.map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setKey(k)}
+            className={`text-left p-3 rounded-xl border transition ${key === k ? 'border-primary bg-primary/10 ring-2 ring-primary/20' : 'border-line bg-surface-2 hover:border-primary/40'}`}
+          >
+            <div className={`flex items-center gap-2 font-extrabold text-sm ${key === k ? 'text-primary' : ''}`}>
+              <DynIcon name={GROUP_ICON[k === 'genel' ? '' : k]} className="w-[18px] h-[18px]" /> {TPL_LABEL[k]}
+            </div>
+            <div className="text-[11px] text-muted mt-1 leading-snug line-clamp-2">{TPL_HINT[k]}</div>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn-secondary btn-sm" onClick={preview} disabled={busy}>
+          {busy ? <Spinner className="w-4 h-4" /> : <Eye className="w-4 h-4" />} Örnek PDF önizle
+        </button>
+        <select className="input-sm w-auto" value="" onChange={(e) => e.target.value && copyFrom(e.target.value as PdfTemplateKey)}>
+          <option value="">Başka şablondan kopyala…</option>
+          {PDF_TEMPLATE_KEYS.filter((k) => k !== key).map((k) => (
+            <option key={k} value={k}>
+              {TPL_LABEL[k]}
+            </option>
+          ))}
+        </select>
+        <button type="button" className="btn-ghost btn-sm" onClick={reset}>
+          <RotateCcw className="w-4 h-4" /> Varsayılana dön
+        </button>
+      </div>
+
+      <div className="p-4 rounded-2xl border border-line bg-surface-2/60 space-y-4">
+        <div className="text-sm font-extrabold">Başlık & antet</div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="PDF başlığı" hint="Sağ üstte büyük yazı">
+            <input className="input" value={t.title} onChange={(e) => onChange(key, { title: e.target.value.toLocaleUpperCase('tr') })} placeholder="FİYAT TEKLİFİ" maxLength={40} />
+          </Field>
+          <Field label="Alt başlık" hint="Başlığın altındaki küçük yazı (boş bırakılabilir)">
+            <input className="input" value={t.subtitle} onChange={(e) => onChange(key, { subtitle: e.target.value.toLocaleUpperCase('tr') })} placeholder="PROFORMA" maxLength={40} />
+          </Field>
+          <Field label="Antet faaliyet satırı" hint={`Boşsa firma sloganı kullanılır: "${s.company.slogan || '—'}"`}>
+            <input className="input" value={t.slogan} onChange={(e) => onChange(key, { slogan: e.target.value })} placeholder={s.company.slogan} />
+          </Field>
+          <Field label="Vurgu rengi" hint="Boşsa genel vurgu rengi kullanılır">
+            <div className="flex gap-2">
+              <input
+                type="color"
+                className="h-[46px] w-14 shrink-0 rounded-xl border border-line bg-surface-2 p-1"
+                value={t.accentColor || s.quote.accentColor}
+                onChange={(e) => onChange(key, { accentColor: e.target.value })}
+              />
+              <input className="input" value={t.accentColor} onChange={(e) => onChange(key, { accentColor: e.target.value.trim() })} placeholder={s.quote.accentColor} />
+              {t.accentColor && (
+                <button type="button" className="btn-icon shrink-0 h-[46px] w-[46px]" title="Genel renge dön" onClick={() => onChange(key, { accentColor: '' })}>
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </Field>
+        </div>
+        <Field label="Ön yazı" hint='Kalem tablosundan önce "Sayın …" hitabıyla görünür. Boş bırakılırsa gösterilmez.'>
+          <textarea className="input min-h-[72px]" value={t.intro} onChange={(e) => onChange(key, { intro: e.target.value })} placeholder="Talebiniz doğrultusunda hazırladığımız teklifimizi bilgilerinize sunarız." />
+        </Field>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="label mb-0">Ödeme planı</label>
+          <span className={`text-xs font-bold ${Math.abs(planSum - 100) < 0.01 || planSum === 0 ? 'text-muted' : 'text-amber-500'}`}>Toplam: %{planSum}</span>
+        </div>
+        <PlanEditor plan={t.paymentPlan} onChange={setPlan} />
+      </div>
+      <Field label="Teslimat & kurulum">
+        <textarea className="input min-h-[70px]" value={t.delivery} onChange={(e) => onChange(key, { delivery: e.target.value })} />
+      </Field>
+      <Field label="Garanti şartları">
+        <textarea className="input min-h-[90px]" value={t.warranty} onChange={(e) => onChange(key, { warranty: e.target.value })} />
+      </Field>
+      <Field label="Notlar & genel şartlar">
+        <textarea className="input min-h-[90px]" value={t.notes} onChange={(e) => onChange(key, { notes: e.target.value })} />
+      </Field>
     </div>
   );
 }
@@ -233,6 +386,10 @@ export default function SettingsPage() {
   const c = s.company;
   const qs = s.quote;
   const setBank = (i: number, patch: Partial<BankAccount>) => up('banks', s.banks.map((b, j) => (j === i ? { ...b, ...patch } : b)));
+  const upPdf = (key: PdfTemplateKey, patch: Partial<PdfTemplate>) => {
+    setS((x) => ({ ...x, pdf: { ...x.pdf, [key]: { ...x.pdf[key], ...patch } } }));
+    setDirty(true);
+  };
   const saveBar = !['brochures', 'data'].includes(tab);
 
   return (
@@ -242,26 +399,28 @@ export default function SettingsPage() {
         subtitle="Firma bilgileri, teklif varsayılanları ve sistem yönetimi"
         actions={
           saveBar && (
-            <button className="btn-primary" onClick={save} disabled={busy || !dirty}>
+            <button className="btn-primary hidden lg:inline-flex" onClick={save} disabled={busy || !dirty}>
               {busy ? <Spinner className="w-4 h-4" /> : <Save className="w-4 h-4" />} Kaydet
             </button>
           )
         }
       />
-      <div className="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-5 items-start">
-        <nav className="flex lg:flex-col gap-1 overflow-x-auto no-scrollbar lg:card lg:p-2 lg:sticky lg:top-6">
+      <div className="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-4 lg:gap-5 items-start">
+        <nav className="min-w-0 flex lg:flex-col gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 lg:card lg:p-2 lg:sticky lg:top-6">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap shrink-0 ${tab === t.id ? 'bg-primary/12 text-primary' : 'text-muted hover:text-fg hover:bg-surface-2'}`}
+              className={`flex items-center gap-2 lg:gap-2.5 px-3 py-2 lg:py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap shrink-0 border lg:border-0 ${
+                tab === t.id ? 'bg-primary/12 text-primary border-primary/30' : 'text-muted hover:text-fg hover:bg-surface-2 bg-surface border-line'
+              }`}
             >
               <t.icon className="w-[18px] h-[18px]" /> {t.label}
             </button>
           ))}
         </nav>
 
-        <div className="card p-5 sm:p-6">
+        <div className="card p-4 sm:p-6 min-w-0">
           {tab === 'company' && (
             <div className="space-y-5">
               <div className="grid sm:grid-cols-2 gap-5">
@@ -359,32 +518,12 @@ export default function SettingsPage() {
                 <Toggle checked={qs.showPhotos} onChange={(v) => up('quote', { showPhotos: v })} label="Ürün görselleri" hint="Yeni teklif varsayılanı" />
                 <Toggle checked={qs.showTryEquivalent} onChange={(v) => up('quote', { showTryEquivalent: v })} label="TL karşılığı" hint="Yeni teklif varsayılanı" />
               </div>
-              <div>
-                <label className="label">Varsayılan ödeme planı</label>
-                <div className="space-y-2">
-                  {qs.paymentPlan.map((p, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_100px_32px] gap-2">
-                      <input className="input-sm" value={p.label} onChange={(e) => up('quote', { paymentPlan: qs.paymentPlan.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} />
-                      <NumberInput className="input-sm" value={p.pct} suffix="%" onChange={(v) => up('quote', { paymentPlan: qs.paymentPlan.map((x, j) => (j === i ? { ...x, pct: v } : x)) })} />
-                      <button className="btn-icon w-8 h-8" onClick={() => up('quote', { paymentPlan: qs.paymentPlan.filter((_, j) => j !== i) })}>
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  <button className="btn-ghost btn-sm" onClick={() => up('quote', { paymentPlan: [...qs.paymentPlan, { label: '', pct: 0 }] })}>
-                    <Plus className="w-4 h-4" /> Aşama ekle
-                  </button>
-                </div>
-              </div>
-              <Field label="Teslimat & kurulum metni">
-                <textarea className="input min-h-[70px]" value={qs.delivery} onChange={(e) => up('quote', { delivery: e.target.value })} />
-              </Field>
-              <Field label="Garanti şartları">
-                <textarea className="input min-h-[90px]" value={qs.warranty} onChange={(e) => up('quote', { warranty: e.target.value })} />
-              </Field>
-              <Field label="Notlar & genel şartlar">
-                <textarea className="input min-h-[90px]" value={qs.notes} onChange={(e) => up('quote', { notes: e.target.value })} />
-              </Field>
+              <button type="button" onClick={() => setTab('pdf')} className="w-full text-left p-4 rounded-xl border border-dashed border-primary/40 bg-primary/5 flex items-center gap-3">
+                <FileType2 className="w-5 h-5 text-primary shrink-0" />
+                <span className="text-sm">
+                  <b>Ödeme planı, teslimat, garanti ve notlar</b> artık ana kategoriye göre ayrı ayrı <span className="text-primary font-bold">Proforma PDF</span> sayfasında düzenleniyor →
+                </span>
+              </button>
             </div>
           )}
 
@@ -435,6 +574,8 @@ export default function SettingsPage() {
               </button>
             </div>
           )}
+
+          {tab === 'pdf' && <PdfTemplatesTab s={s} onChange={upPdf} />}
 
           {tab === 'brochures' && <Brochures />}
 
@@ -490,6 +631,16 @@ export default function SettingsPage() {
           {tab === 'data' && <DataTab />}
         </div>
       </div>
+      {saveBar && dirty && (
+        <div className="lg:hidden fixed inset-x-3 z-30 bottom-[calc(76px+env(safe-area-inset-bottom))] animate-in">
+          <div className="card shadow-2xl p-2.5 pl-4 flex items-center gap-3 border-primary/40">
+            <span className="text-sm font-bold flex-1">Kaydedilmemiş değişiklik</span>
+            <button className="btn-primary" onClick={save} disabled={busy}>
+              {busy ? <Spinner className="w-4 h-4" /> : <Save className="w-4 h-4" />} Kaydet
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

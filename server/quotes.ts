@@ -21,7 +21,7 @@ import type {
   Rates,
   VatMode,
 } from '../shared/types';
-import { CURRENCIES, QUOTE_STATUSES, STATUS_LABEL } from '../shared/types';
+import { CURRENCIES, MAIN_GROUPS, QUOTE_STATUSES, STATUS_LABEL } from '../shared/types';
 
 const cur = (v: unknown, def: Currency = 'USD'): Currency => (CURRENCIES.includes(v as Currency) ? (v as Currency) : def);
 
@@ -302,6 +302,7 @@ async function prepare(c: Ctx, input: QuoteInput, existing?: QuoteRow) {
   }
 
   const terms: QuoteTerms = {
+    intro: str(input.terms?.intro, 1500),
     paymentPlan: (Array.isArray(input.terms?.paymentPlan) ? input.terms!.paymentPlan : [])
       .slice(0, 12)
       .map((p) => ({ label: str(p.label, 200), pct: num(p.pct), note: str(p.note, 200) }))
@@ -316,6 +317,7 @@ async function prepare(c: Ctx, input: QuoteInput, existing?: QuoteRow) {
     showPhotos: o.showPhotos !== false,
     showTryEquivalent: o.showTryEquivalent !== false,
     brochureIds: Array.isArray(o.brochureIds) ? o.brochureIds.map((x) => str(x, 40)).slice(0, 20) : [],
+    group: (MAIN_GROUPS as string[]).includes(String(o.group)) ? o.group : '',
   };
   const ges = input.ges
     ? {

@@ -78,6 +78,14 @@ const MIGRATIONS: string[][] = [
     `CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, user_name TEXT, action TEXT NOT NULL, entity TEXT, entity_id TEXT, detail TEXT, created_at TEXT NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS brochures (id TEXT PRIMARY KEY, title TEXT NOT NULL, kind TEXT NOT NULL, file_key TEXT NOT NULL, size INTEGER NOT NULL DEFAULT 0, sort INTEGER NOT NULL DEFAULT 0, default_on INTEGER NOT NULL DEFAULT 1, created_at TEXT)`,
   ],
+  // v2.1 – Ana kategoriler (Zayıf Akım / Solar / Ev Elektroniği)
+  [
+    `ALTER TABLE categories ADD COLUMN grp TEXT NOT NULL DEFAULT ''`,
+    `UPDATE categories SET grp = 'solar' WHERE role IN ('pv','inverter','battery','infra','service')`,
+    `UPDATE categories SET grp = 'zayif', role = CASE WHEN icon = 'HardDrive' THEN 'recorder' WHEN role = '' THEN 'camera' ELSE role END WHERE grp = '' AND icon IN ('Camera','Cctv','HardDrive')`,
+    // Müşterisi elle yazılmış eski teklifleri telefon veya ad+firma eşleşmesiyle müşteri kartına bağla
+    `UPDATE quotes SET customer_id = (SELECT c.id FROM customers c WHERE (COALESCE(c.phone,'') <> '' AND REPLACE(c.phone,' ','') = REPLACE(COALESCE(json_extract(quotes.customer,'$.phone'),''),' ','')) OR (c.name <> '' AND lower(c.name) = lower(COALESCE(json_extract(quotes.customer,'$.name'),'')) AND COALESCE(c.company,'') = COALESCE(json_extract(quotes.customer,'$.company'),'')) LIMIT 1) WHERE customer_id IS NULL`,
+  ],
 ];
 
 let migrated = false;
@@ -93,7 +101,7 @@ export async function ensureSchema(env: Env) {
     const stmts = MIGRATIONS[i].map((sql) => db.prepare(sql));
     stmts.push(db.prepare('INSERT INTO _migrations (id, applied_at) VALUES (?, ?)').bind(i + 1, nowIso()));
     if (i === 0) {
-      // Yerleşik kategorileri ekle
+      // Yerleşik kategorileri ekle (grp sütunu 2. migrasyonda eklenir; role'den doldurulur)
       for (const cat of BUILTIN_CATEGORIES) {
         stmts.push(
           db
@@ -111,7 +119,7 @@ export async function ensureSchema(env: Env) {
 
 export async function loadSettings(env: Env): Promise<AppSettings> {
   const { results } = await env.DB.prepare(
-    "SELECT key, value FROM settings WHERE key IN ('company','quote','banks','notify','ges')"
+    "SELECT key, value FROM settings WHERE key IN ('company','quote','banks','notify','ges','pdf')"
   ).all<{ key: string; value: string }>();
   const partial: Record<string, unknown> = {};
   for (const r of results) partial[r.key] = parseJson(r.value, null);

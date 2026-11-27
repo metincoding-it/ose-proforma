@@ -52,16 +52,17 @@ body {
   .label {
     @apply block text-[13px] font-semibold text-muted mb-1.5;
   }
+  /* Mobilde 16px: iOS Safari odaklanınca sayfayı yakınlaştırmasın */
   .input {
-    @apply w-full bg-surface-2 border border-line rounded-xl px-3.5 py-2.5 text-[15px] text-fg placeholder:text-muted/70
+    @apply w-full bg-surface-2 border border-line rounded-xl px-3.5 py-2.5 text-base sm:text-[15px] text-fg placeholder:text-muted/70
       focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition disabled:opacity-60;
   }
   .input-sm {
-    @apply w-full bg-surface-2 border border-line rounded-lg px-2.5 py-1.5 text-sm text-fg placeholder:text-muted/70
+    @apply w-full bg-surface-2 border border-line rounded-lg px-2.5 py-2 sm:py-1.5 text-base sm:text-sm text-fg placeholder:text-muted/70
       focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition select-none
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 min-h-[44px] sm:min-h-0 text-sm font-bold transition select-none touch-manipulation
       disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap;
   }
   .btn-primary {
@@ -77,10 +78,10 @@ body {
     @apply btn bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/25;
   }
   .btn-sm {
-    @apply px-3 py-1.5 text-[13px] rounded-lg;
+    @apply px-3 py-2 sm:py-1.5 min-h-[38px] sm:min-h-0 text-[13px] rounded-lg;
   }
   .btn-icon {
-    @apply inline-flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-fg hover:bg-surface-2 transition;
+    @apply inline-flex items-center justify-center w-10 h-10 sm:w-9 sm:h-9 rounded-lg touch-manipulation text-muted hover:text-fg hover:bg-surface-2 transition;
   }
   .chip {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wide;
@@ -98,6 +99,11 @@ input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; marg
 input[type='number'] { -moz-appearance: textfield; }
 
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+/* Mobil: hiçbir sayfa yatayda taşmasın */
+html, body { overflow-x: clip; }
+/* Metin alanları içerik kadar büyüsün (destekleyen tarayıcılarda) */
+textarea.input { field-sizing: content; max-height: 50vh; }
 
 @keyframes slide-up { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
 .animate-in { animation: slide-up 0.18s ease-out; }

@@ -6,6 +6,7 @@ import { quoteOut, stripCosts, eventStmt, type QuoteRow } from './quotes';
 import { listBrochures } from './catalog';
 import { sendMail, escapeHtml } from './mail';
 import type { QuoteTotals, CustomerSnapshot } from '../shared/types';
+import { templateKey } from '../shared/types';
 
 export const publicRoutes = new Hono<AppEnv>();
 
@@ -50,11 +51,17 @@ publicRoutes.get('/q/:token', async (c) => {
     }
   }
   const q = stripCosts(quoteOut(row, false));
+  const { paymentPlan: _pp, delivery: _d, warranty: _w, notes: _n, ...template } = settings.pdf[templateKey(q.options.group)];
+  void _pp;
+  void _d;
+  void _w;
+  void _n;
   return c.json({
     quote: { ...q, publicToken: row.public_token },
     company: settings.company,
     banks: settings.banks,
-    accentColor: settings.quote.accentColor,
+    accentColor: template.accentColor || settings.quote.accentColor,
+    template,
     brochures: brochures.filter((b) => q.options.brochureIds.includes(b.id)),
     newer,
     expired: !!row.valid_until && row.valid_until < todayTr(),

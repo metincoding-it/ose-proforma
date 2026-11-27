@@ -20,7 +20,9 @@ import {
 } from 'lucide-react';
 import { useAuth, useData, useTheme, useUi } from '../lib/store';
 import type { ThemePref } from '../lib/store';
-import { Modal, Field } from './ui';
+import { Modal, Field, DynIcon } from './ui';
+import type { CategoryGroup } from '../../shared/types';
+import { GROUP_ICON, GROUP_LABEL, MAIN_GROUPS } from '../../shared/types';
 import { api, errMsg } from '../lib/api';
 
 const NAV = [
@@ -126,6 +128,11 @@ export default function Layout() {
   const location = useLocation();
   const [pwOpen, setPwOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
+  const newQuote = (g: CategoryGroup) => {
+    setNewOpen(false);
+    navigate(g ? `/teklifler/yeni?tur=${g}` : '/teklifler/yeni');
+  };
   const items = isAdmin ? [...NAV, ...ADMIN_NAV] : NAV;
   const isEditor = /^\/teklifler\/[^/]+$/.test(location.pathname);
 
@@ -185,20 +192,22 @@ export default function Layout() {
 
       <div className="flex-1 min-w-0 flex flex-col">
         {/* MOBİL ÜST BAR */}
-        <header className="lg:hidden sticky top-0 z-40 h-16 bg-surface/90 backdrop-blur border-b border-line px-4 flex items-center justify-between">
-          <Brand onClick={() => navigate('/')} />
-          <button className="btn-icon" onClick={() => setMoreOpen(true)} aria-label="Menü">
-            <MoreHorizontal className="w-6 h-6" />
-          </button>
+        <header className="lg:hidden sticky top-0 z-40 bg-surface/90 backdrop-blur border-b border-line pt-[env(safe-area-inset-top)]">
+          <div className="h-14 px-4 flex items-center justify-between gap-3">
+            <Brand onClick={() => navigate('/')} />
+            <button className="btn-icon w-10 h-10 shrink-0" onClick={() => setMoreOpen(true)} aria-label="Menü">
+              <MoreHorizontal className="w-6 h-6" />
+            </button>
+          </div>
         </header>
 
-        <main className={`flex-1 w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 lg:py-8 ${isEditor ? 'max-w-[1400px]' : 'max-w-7xl'} pb-28 lg:pb-10`}>
+        <main className={`flex-1 w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5 lg:py-8 ${isEditor ? 'max-w-[1400px]' : 'max-w-7xl'} pb-[calc(96px+env(safe-area-inset-bottom))] lg:pb-10`}>
           <Outlet />
         </main>
       </div>
 
       {/* MOBİL ALT MENÜ */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-surface/95 backdrop-blur border-t border-line safe-bottom">
+      <nav className={`lg:hidden fixed bottom-0 inset-x-0 z-40 bg-surface/95 backdrop-blur border-t border-line safe-bottom ${isEditor ? 'hidden' : ''}`}>
         <div className="grid grid-cols-5 h-16">
           {[NAV[0], NAV[1]].map((n) => (
             <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold ${isActive ? 'text-primary' : 'text-muted'}`}>
@@ -206,7 +215,7 @@ export default function Layout() {
               {n.label}
             </NavLink>
           ))}
-          <button onClick={() => navigate('/teklifler/yeni')} className="flex items-center justify-center">
+          <button onClick={() => setNewOpen(true)} className="flex items-center justify-center" aria-label="Yeni teklif">
             <span className="w-12 h-12 -mt-5 rounded-2xl bg-primary text-primary-fg flex items-center justify-center shadow-glow">
               <Plus className="w-6 h-6" />
             </span>
@@ -220,29 +229,70 @@ export default function Layout() {
         </div>
       </nav>
 
-      {/* MOBİL MENÜ ÇEKMECESİ */}
+      {/* YENİ TEKLİF – TÜR SEÇİMİ */}
+      {newOpen && (
+        <div className="lg:hidden fixed inset-0 z-[60]">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setNewOpen(false)} />
+          <div className="absolute inset-x-0 bottom-0 bg-surface border-t border-line rounded-t-3xl p-4 pt-2.5 animate-in safe-bottom">
+            <div className="mx-auto w-10 h-1.5 rounded-full bg-line mb-3" />
+            <div className="font-extrabold text-lg mb-1">Yeni teklif</div>
+            <p className="text-sm text-muted mb-4">Teklif türünü seçin; PDF metinleri ve ödeme planı buna göre gelir.</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[...MAIN_GROUPS, ''].map((g) => (
+                <button
+                  key={g || 'genel'}
+                  onClick={() => newQuote(g as CategoryGroup)}
+                  className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-line bg-surface-2 px-3 py-5 font-bold active:scale-[0.98] transition"
+                >
+                  <span className="w-11 h-11 rounded-xl bg-primary/12 text-primary flex items-center justify-center">
+                    <DynIcon name={GROUP_ICON[g as CategoryGroup]} className="w-6 h-6" />
+                  </span>
+                  {GROUP_LABEL[g as CategoryGroup]}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MOBİL MENÜ (ALT SAYFA) */}
       {moreOpen && (
         <div className="lg:hidden fixed inset-0 z-[60]">
           <div className="absolute inset-0 bg-black/60" onClick={() => setMoreOpen(false)} />
-          <div className="absolute right-0 top-0 bottom-0 w-[86%] max-w-sm bg-surface border-l border-line p-4 flex flex-col animate-in">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="font-extrabold">{user?.name}</div>
+          <div className="absolute inset-x-0 bottom-0 max-h-[88dvh] bg-surface border-t border-line rounded-t-3xl p-4 pt-2.5 flex flex-col animate-in safe-bottom">
+            <div className="mx-auto w-10 h-1.5 rounded-full bg-line mb-3" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-full bg-primary/15 text-primary font-black flex items-center justify-center shrink-0">{user?.name?.[0]?.toUpperCase()}</div>
+              <div className="min-w-0 flex-1">
+                <div className="font-extrabold truncate">{user?.name}</div>
                 <div className="text-xs text-muted">{isAdmin ? 'Yönetici' : 'Satış Personeli'}</div>
               </div>
-              <button className="btn-icon" onClick={() => setMoreOpen(false)}>
+              <button className="btn-icon w-10 h-10" onClick={() => setMoreOpen(false)} aria-label="Kapat">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <nav className="space-y-1 flex-1 overflow-y-auto">
+            <nav className="grid grid-cols-3 gap-2 overflow-y-auto pb-1">
               {items.map((n) => (
-                <NavLink key={n.to} to={n.to} end={'end' in n ? Boolean(n.end) : undefined} className={linkCls} onClick={() => setMoreOpen(false)}>
-                  <n.icon className="w-5 h-5" /> {n.label}
+                <NavLink
+                  key={n.to}
+                  to={n.to}
+                  end={'end' in n ? Boolean(n.end) : undefined}
+                  onClick={() => setMoreOpen(false)}
+                  className={({ isActive }) =>
+                    `flex flex-col items-center justify-center gap-1.5 rounded-2xl border px-2 py-3.5 text-[12px] font-bold text-center leading-tight transition ${
+                      isActive ? 'bg-primary/12 border-primary/40 text-primary' : 'bg-surface-2 border-line text-fg'
+                    }`
+                  }
+                >
+                  <n.icon className="w-6 h-6" /> {n.label}
                 </NavLink>
               ))}
             </nav>
-            <div className="space-y-3 pt-4 border-t border-line">
-              <ThemeSwitch />
+            <div className="space-y-3 pt-4 mt-3 border-t border-line">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-muted">Tema</span>
+                <ThemeSwitch />
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   className="btn-secondary"

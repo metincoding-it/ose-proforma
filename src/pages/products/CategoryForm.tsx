@@ -1,33 +1,43 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
-import type { Category, CategoryRole, SpecField } from '../../../shared/types';
-import { FIELD_PRESETS } from '../../../shared/catalog';
+import type { Category, CategoryGroup, CategoryRole, SpecField } from '../../../shared/types';
+import { GROUP_ICON, GROUP_LABEL, MAIN_GROUPS } from '../../../shared/types';
+import { FIELD_PRESETS, ROLE_OPTIONS } from '../../../shared/catalog';
 import { api, ApiError, errMsg } from '../../lib/api';
 import { useUi } from '../../lib/store';
 import { Modal, Field, DynIcon, ICON_CHOICES, Spinner } from '../../components/ui';
 
-const ROLES: { v: CategoryRole; label: string }[] = [
-  { v: '', label: 'Genel' },
-  { v: 'pv', label: 'PV Panel (GES asistanı)' },
-  { v: 'inverter', label: 'Inverter (GES asistanı)' },
-  { v: 'battery', label: 'Batarya (GES asistanı)' },
-  { v: 'infra', label: 'Altyapı / Montaj (GES asistanı)' },
-  { v: 'service', label: 'Hizmet / İşçilik (GES asistanı)' },
-];
+const blank = (group: CategoryGroup = ''): Category => ({ id: '', label: '', icon: 'Box', group, role: '', fields: [], sort: 0 });
 
-export default function CategoryForm({ open, onClose, initial, onSaved }: { open: boolean; onClose: () => void; initial: Category | null; onSaved: () => void }) {
-  const [c, setC] = useState<Category>(initial || { id: '', label: '', icon: 'Box', role: '', fields: [], sort: 0 });
+export default function CategoryForm({
+  open,
+  onClose,
+  initial,
+  onSaved,
+  defaultGroup = '',
+}: {
+  open: boolean;
+  onClose: () => void;
+  initial: Category | null;
+  onSaved: () => void;
+  defaultGroup?: CategoryGroup;
+}) {
+  const [c, setC] = useState<Category>(initial || blank(defaultGroup));
   const [busy, setBusy] = useState(false);
   const { toast, confirm } = useUi();
   useEffect(() => {
-    if (open) setC(initial || { id: '', label: '', icon: 'Box', role: '', fields: [], sort: 0 });
-  }, [open, initial]);
+    if (open) setC(initial || blank(defaultGroup));
+  }, [open, initial, defaultGroup]);
+
+  const setGroup = (group: CategoryGroup) =>
+    setC((x) => ({ ...x, group, role: group && ROLE_OPTIONS[group].some((r) => r.v === x.role) ? x.role : '' }));
+  const presets = Object.entries(FIELD_PRESETS).filter(([, p]) => !c.group || p.group === c.group || p.group === '');
 
   const setField = (i: number, patch: Partial<SpecField>) => setC((x) => ({ ...x, fields: x.fields.map((f, j) => (j === i ? { ...f, ...patch } : f)) }));
   const usePreset = (key: string) => {
     const p = FIELD_PRESETS[key];
     if (!p) return;
-    setC((x) => ({ ...x, label: x.label || p.label, icon: p.icon, role: p.role, fields: p.fields.map((f) => ({ ...f })) }));
+    setC((x) => ({ ...x, label: x.label || p.label, icon: p.icon, group: p.group || x.group, role: p.role, fields: p.fields.map((f) => ({ ...f })) }));
   };
 
   const save = async () => {
@@ -84,7 +94,7 @@ export default function CategoryForm({ open, onClose, initial, onSaved }: { open
       footer={
         <>
           {c.id && (
-            <button className="btn-danger mr-auto" onClick={del}>
+            <button className="btn-danger sm:mr-auto" onClick={del}>
               <Trash2 className="w-4 h-4" /> Sil
             </button>
           )}
@@ -98,12 +108,30 @@ export default function CategoryForm({ open, onClose, initial, onSaved }: { open
       }
     >
       <div className="space-y-5">
-        {!c.id && (
+        <div>
+          <label className="label">Ana kategori</label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(['', ...MAIN_GROUPS] as CategoryGroup[]).map((g) => (
+              <button
+                key={g || 'genel'}
+                type="button"
+                onClick={() => setGroup(g)}
+                className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-bold transition ${
+                  c.group === g ? 'bg-primary text-primary-fg border-primary shadow' : 'bg-surface-2 border-line text-muted hover:text-fg'
+                }`}
+              >
+                <DynIcon name={GROUP_ICON[g]} className="w-[18px] h-[18px]" /> {GROUP_LABEL[g]}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted mt-1.5">Teklif türü ve PDF metin şablonu (ödeme, garanti, notlar) bu ana kategoriye göre seçilir.</p>
+        </div>
+        {!c.id && presets.length > 0 && (
           <div>
             <label className="label">Hazır şablondan başla</label>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(FIELD_PRESETS).map(([k, p]) => (
-                <button key={k} type="button" className="btn-secondary btn-sm" onClick={() => usePreset(k)}>
+            <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
+              {presets.map(([k, p]) => (
+                <button key={k} type="button" className="btn-secondary btn-sm shrink-0" onClick={() => usePreset(k)}>
                   <DynIcon name={p.icon} className="w-4 h-4" /> {p.label}
                 </button>
               ))}
@@ -114,12 +142,26 @@ export default function CategoryForm({ open, onClose, initial, onSaved }: { open
           <Field label="Kategori adı">
             <input className="input" value={c.label} onChange={(e) => setC({ ...c, label: e.target.value })} placeholder="Örn: Güvenlik Kamerası" />
           </Field>
-          <Field label="Rol" hint="GES asistanı hangi kategoriden ürün önereceğini buradan bilir">
-            <select className="input" value={c.role} onChange={(e) => setC({ ...c, role: e.target.value as CategoryRole })}>
-              {ROLES.map((r) => (
-                <option key={r.v} value={r.v}>
-                  {r.label}
-                </option>
+          <Field label="Rol" hint={c.group === 'solar' ? 'GES asistanı hangi kategoriden ürün önereceğini buradan bilir' : 'Ürünün ana kategori içindeki türü'}>
+            <select
+              className="input"
+              value={c.role}
+              onChange={(e) => {
+                const role = e.target.value as CategoryRole;
+                const g = MAIN_GROUPS.find((x) => ROLE_OPTIONS[x].some((r) => r.v === role));
+                setC({ ...c, role, group: g || c.group });
+              }}
+            >
+              <option value="">Genel (rol yok)</option>
+              {(c.group ? [c.group] : MAIN_GROUPS).map((g) => (
+                <optgroup key={g} label={GROUP_LABEL[g]}>
+                  {ROLE_OPTIONS[g].map((r) => (
+                    <option key={r.v} value={r.v}>
+                      {r.label}
+                      {r.hint ? ` (${r.hint})` : ''}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </Field>
@@ -151,54 +193,63 @@ export default function CategoryForm({ open, onClose, initial, onSaved }: { open
           ) : (
             <div className="space-y-2">
               {c.fields.map((f, i) => (
-                <div key={i} className="grid grid-cols-[24px_1fr_80px_110px_32px] sm:grid-cols-[24px_1fr_90px_120px_1fr_90px_32px] gap-2 items-center p-2 rounded-xl bg-surface-2 border border-line">
-                  <div className="flex flex-col">
-                    <button
-                      type="button"
-                      disabled={i === 0}
-                      className="text-muted disabled:opacity-30"
-                      onClick={() =>
-                        setC((x) => {
-                          const a = [...x.fields];
-                          [a[i - 1], a[i]] = [a[i], a[i - 1]];
-                          return { ...x, fields: a };
-                        })
-                      }
-                    >
-                      <ChevronUp className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={i === c.fields.length - 1}
-                      className="text-muted disabled:opacity-30"
-                      onClick={() =>
-                        setC((x) => {
-                          const a = [...x.fields];
-                          [a[i + 1], a[i]] = [a[i], a[i + 1]];
-                          return { ...x, fields: a };
-                        })
-                      }
-                    >
-                      <ChevronDown className="w-4 h-4" />
+                <div key={i} className="p-2.5 rounded-xl bg-surface-2 border border-line space-y-2 sm:space-y-0 sm:grid sm:grid-cols-[24px_1fr_90px_120px_1fr_90px_32px] sm:gap-2 sm:items-center">
+                  <div className="flex items-center gap-2 sm:contents">
+                    <div className="flex sm:flex-col">
+                      <button
+                        type="button"
+                        disabled={i === 0}
+                        className="p-1 sm:p-0 text-muted disabled:opacity-30"
+                        aria-label="Yukarı"
+                        onClick={() =>
+                          setC((x) => {
+                            const a = [...x.fields];
+                            [a[i - 1], a[i]] = [a[i], a[i - 1]];
+                            return { ...x, fields: a };
+                          })
+                        }
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={i === c.fields.length - 1}
+                        className="p-1 sm:p-0 text-muted disabled:opacity-30"
+                        aria-label="Aşağı"
+                        onClick={() =>
+                          setC((x) => {
+                            const a = [...x.fields];
+                            [a[i + 1], a[i]] = [a[i], a[i + 1]];
+                            return { ...x, fields: a };
+                          })
+                        }
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <input className="input-sm flex-1 min-w-0" placeholder="Alan adı (örn: Güç)" value={f.label} onChange={(e) => setField(i, { label: e.target.value })} />
+                    <button type="button" className="btn-icon w-9 h-9 shrink-0 sm:hidden" aria-label="Alanı sil" onClick={() => setC((x) => ({ ...x, fields: x.fields.filter((_, j) => j !== i) }))}>
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                  <input className="input-sm" placeholder="Alan adı (örn: Güç)" value={f.label} onChange={(e) => setField(i, { label: e.target.value })} />
-                  <input className="input-sm" placeholder="Birim" value={f.unit || ''} onChange={(e) => setField(i, { unit: e.target.value })} />
-                  <select className="input-sm" value={f.type || 'text'} onChange={(e) => setField(i, { type: e.target.value as SpecField['type'] })}>
-                    <option value="text">Metin</option>
-                    <option value="number">Sayı</option>
-                    <option value="select">Liste</option>
-                  </select>
+                  <div className="grid grid-cols-2 gap-2 sm:contents">
+                    <input className="input-sm" placeholder="Birim" value={f.unit || ''} onChange={(e) => setField(i, { unit: e.target.value })} />
+                    <select className="input-sm" value={f.type || 'text'} onChange={(e) => setField(i, { type: e.target.value as SpecField['type'] })}>
+                      <option value="text">Metin</option>
+                      <option value="number">Sayı</option>
+                      <option value="select">Liste</option>
+                    </select>
+                  </div>
                   <input
-                    className={`input-sm col-span-3 sm:col-span-1 col-start-2 sm:col-start-auto ${f.type === 'select' ? '' : 'invisible hidden sm:block'}`}
+                    className={`input-sm ${f.type === 'select' ? '' : 'hidden sm:block sm:invisible'}`}
                     placeholder="Seçenekler (virgülle)"
                     value={(f.options || []).join(', ')}
                     onChange={(e) => setField(i, { options: e.target.value.split(',').map((s) => s.trim()) })}
                   />
-                  <label className="text-xs flex items-center gap-1 text-muted whitespace-nowrap col-start-2 sm:col-start-auto" title="Teknik özette etiketsiz, kısa gösterilir">
-                    <input type="checkbox" checked={!!f.short} onChange={(e) => setField(i, { short: e.target.checked })} /> Özette
+                  <label className="text-xs flex items-center gap-1.5 text-muted whitespace-nowrap py-1" title="Teknik özette etiketsiz, kısa gösterilir">
+                    <input type="checkbox" className="w-4 h-4" checked={!!f.short} onChange={(e) => setField(i, { short: e.target.checked })} /> <span className="sm:hidden">Teknik özette göster</span><span className="hidden sm:inline">Özette</span>
                   </label>
-                  <button type="button" className="btn-icon w-8 h-8 row-start-1 col-start-5 sm:row-auto sm:col-auto" onClick={() => setC((x) => ({ ...x, fields: x.fields.filter((_, j) => j !== i) }))}>
+                  <button type="button" className="hidden sm:inline-flex btn-icon w-8 h-8" aria-label="Alanı sil" onClick={() => setC((x) => ({ ...x, fields: x.fields.filter((_, j) => j !== i) }))}>
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>

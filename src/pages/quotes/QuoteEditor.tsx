@@ -34,18 +34,19 @@ import {
   FileText,
   Lock,
 } from 'lucide-react';
-import type { Currency, Customer, GesInfo, Quote, QuoteEvent, QuoteLine, QuoteStatus } from '../../../shared/types';
-import { CURRENCIES, CURRENCY_SYMBOL, QUOTE_STATUSES, STATUS_LABEL, VAT_RATES } from '../../../shared/types';
+import type { CategoryGroup, Currency, Customer, GesInfo, Quote, QuoteEvent, QuoteLine, QuoteStatus } from '../../../shared/types';
+import { CURRENCIES, CURRENCY_SYMBOL, GROUP_ICON, GROUP_LABEL, MAIN_GROUPS, QUOTE_STATUSES, STATUS_LABEL, VAT_RATES } from '../../../shared/types';
 import { calcQuote, convert, type LineCalc } from '../../../shared/calc';
-import { UNIT_OPTIONS } from '../../../shared/catalog';
+import { UNIT_OPTIONS, dominantGroup } from '../../../shared/catalog';
 import { api, ApiError, errMsg } from '../../lib/api';
 import { useAuth, useData, useUi } from '../../lib/store';
 import { fmtMoney, fmtNum, fmtDateTime, fmtRelative, fmtDate, waLink, daysUntil } from '../../lib/format';
-import { Modal, PageLoader, StatusBadge, Segmented, Toggle, Thumb, NumberInput, Field, Spinner, Empty } from '../../components/ui';
+import { Modal, PageLoader, StatusBadge, Segmented, Toggle, Thumb, NumberInput, Field, Spinner, Empty, DynIcon } from '../../components/ui';
+import PlanEditor from '../../components/PlanEditor';
 import { CustomerFields, emptyCustomer } from '../customers/CustomerForm';
 import ProductPicker from './ProductPicker';
 import GesWizard from './GesWizard';
-import { customLine, emptyQuote, sectionLine } from './quoteUtils';
+import { customLine, emptyQuote, sectionLine, termsFromTemplate, termsUntouched, templateHeader } from './quoteUtils';
 
 interface Revision {
   id: string;
@@ -123,15 +124,22 @@ function LineRow({
 
   return (
     <div className="px-3 py-3 border-b border-line hover:bg-surface-2/50 transition">
-      <div className="grid grid-cols-[20px_44px_minmax(0,1fr)_auto_32px] gap-x-2.5 gap-y-2 items-start">
-        <div className="pt-2">{mover}</div>
-        <Thumb src={line.photo} className="w-11 h-11" />
+      <div className="grid grid-cols-[20px_minmax(0,1fr)_36px] sm:grid-cols-[20px_44px_minmax(0,1fr)_auto_32px] gap-x-2.5 gap-y-2 items-start">
+        <div className="pt-1">{mover}</div>
+        <Thumb src={line.photo} className="hidden sm:flex w-11 h-11" />
         <div className="min-w-0 space-y-1">
-          <input className="w-full bg-transparent font-bold text-[14px] focus:outline-none focus:bg-surface-2 rounded px-1 -mx-1" value={line.title} onChange={(e) => set('title', e.target.value)} placeholder="Kalem adı" />
-          <input
-            className="w-full bg-transparent text-xs text-muted focus:outline-none focus:bg-surface-2 rounded px-1 -mx-1"
+          <textarea
+            rows={1}
+            className="w-full resize-none [field-sizing:content] bg-transparent font-bold text-[15px] sm:text-[14px] leading-snug focus:outline-none focus:bg-surface-2 rounded px-1 -mx-1"
+            value={line.title}
+            onChange={(e) => set('title', e.target.value.replace(/\n/g, ' '))}
+            placeholder="Kalem adı"
+          />
+          <textarea
+            rows={1}
+            className="w-full resize-none [field-sizing:content] bg-transparent text-[13px] sm:text-xs text-muted leading-snug focus:outline-none focus:bg-surface-2 rounded px-1 -mx-1"
             value={line.summary || ''}
-            onChange={(e) => set('summary', e.target.value)}
+            onChange={(e) => set('summary', e.target.value.replace(/\n/g, ' '))}
             placeholder="Açıklama / teknik özet"
           />
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted">
@@ -147,16 +155,16 @@ function LineRow({
             {admin && line.type === 'product' && line.unitCost == null && <span className="text-amber-500">Alış fiyatı tanımsız</span>}
           </div>
         </div>
-        <div className="text-right pt-0.5 min-w-[96px]">
+        <div className="hidden sm:block text-right pt-0.5 min-w-[96px]">
           <div className="font-extrabold tabular-nums">{fmtMoney(lineTotal, q.currency)}</div>
           {lc.lineDiscount > 0.004 && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">-{fmtMoney(lc.lineDiscount * factor, q.currency)}</div>}
           {q.vatMode === 'included' && <div className="text-[10px] text-muted">KDV dahil</div>}
         </div>
-        <button type="button" className="btn-icon w-8 h-8" onClick={onRemove} aria-label="Sil">
+        <button type="button" className="btn-icon w-9 h-9 sm:w-8 sm:h-8" onClick={onRemove} aria-label="Sil">
           <Trash2 className="w-4 h-4" />
         </button>
 
-        <div className="col-span-5 sm:col-start-3 sm:col-span-3 grid grid-cols-2 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,0.8fr)] gap-2">
+        <div className="col-span-3 sm:col-start-3 sm:col-span-3 grid grid-cols-2 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,0.8fr)] gap-2">
           <div>
             <span className="block text-[11px] font-semibold text-muted mb-0.5">Miktar</span>
             <div className="flex">
@@ -211,6 +219,13 @@ function LineRow({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="col-span-2 sm:hidden flex items-center justify-between pt-1">
+            <span className="text-xs font-semibold text-muted">
+              Satır toplamı{q.vatMode === 'included' ? ' (KDV dahil)' : ''}
+              {lc.lineDiscount > 0.004 && <span className="text-emerald-600 dark:text-emerald-400"> • -{fmtMoney(lc.lineDiscount * factor, q.currency)}</span>}
+            </span>
+            <span className="font-extrabold tabular-nums">{fmtMoney(lineTotal, q.currency)}</span>
           </div>
         </div>
       </div>
@@ -396,7 +411,7 @@ export default function QuoteEditor() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { isAdmin, user } = useAuth();
-  const { settings, brochures, ready, reloadKits } = useData();
+  const { settings, brochures, ready, reloadKits, productMap, categoryMap } = useData();
   const { toast, confirm } = useUi();
 
   const [q, setQ] = useState<Quote | null>(null);
@@ -410,6 +425,7 @@ export default function QuoteEditor() {
   const [ges, setGes] = useState(false);
   const [share, setShare] = useState<string>('');
   const [menu, setMenu] = useState(false);
+  const summaryRef = useRef<HTMLDivElement>(null);
   const [saveCustomer, setSaveCustomer] = useState(true);
   const [ratesBusy, setRatesBusy] = useState(false);
   const loadedFor = useRef('');
@@ -439,7 +455,8 @@ export default function QuoteEditor() {
     loadedFor.current = id;
     setError('');
     if (isNew) {
-      const draft = emptyQuote(settings, brochures);
+      const tur = params.get('tur') as CategoryGroup | null;
+      const draft = emptyQuote(settings, brochures, tur && (MAIN_GROUPS as string[]).includes(tur) ? tur : '');
       setQ(draft);
       setEvents([]);
       setRevisions([]);
@@ -501,9 +518,22 @@ export default function QuoteEditor() {
       setSaving(true);
       try {
         let draft = q;
-        if (!draft.customerId && saveCustomer && (draft.customer.name || draft.customer.company)) {
-          const r = await api.post<{ customer: Customer }>('/customers', { ...draft.customer, notes: '' });
-          draft = { ...draft, customerId: r.customer.id };
+        if (!draft.customerId && (draft.customer.name || draft.customer.company)) {
+          // Elle yazılan müşteri kayıtlı biriyle eşleşiyorsa (telefon veya ad + firma) teklifi o karta bağla
+          const digits = (v: string) => (v || '').replace(/\D/g, '').slice(-10);
+          const norm = (v: string) => (v || '').trim().toLocaleLowerCase('tr').replace(/\s+/g, ' ');
+          const cu = draft.customer;
+          const list = await api.get<{ customers: Customer[] }>('/customers').then((r) => r.customers).catch(() => [] as Customer[]);
+          const match = list.find(
+            (c) =>
+              (digits(cu.phone).length >= 7 && digits(c.phone) === digits(cu.phone)) ||
+              (norm(cu.name || cu.company) !== '' && norm(c.name) === norm(cu.name) && norm(c.company) === norm(cu.company))
+          );
+          if (match) draft = { ...draft, customerId: match.id };
+          else if (saveCustomer) {
+            const r = await api.post<{ customer: Customer }>('/customers', { ...draft.customer, notes: '' });
+            draft = { ...draft, customerId: r.customer.id };
+          }
         }
         const r = isNew ? await api.post<{ quote: Quote }>('/quotes', draft) : await api.put<{ quote: Quote }>(`/quotes/${draft.id}`, draft);
         setQ(r.quote);
@@ -560,13 +590,37 @@ export default function QuoteEditor() {
   const overLimit = !isAdmin && limit != null && t.effectiveDiscountPct > limit + 0.01;
 
   const setLines = (fn: (lines: QuoteLine[]) => QuoteLine[]) => update((prev) => ({ ...prev, lines: fn(prev.lines) }));
+  const lineGroup = (l: QuoteLine): CategoryGroup => {
+    const p = l.productId ? productMap.get(l.productId) : undefined;
+    return (p && categoryMap.get(p.categoryId)?.group) || '';
+  };
+  /** Teklif türü seçilmemişse ve şartlar elle değiştirilmemişse türü kalemlerden belirle, şablonu uygula */
+  const autoGroup = (prev: Quote, lines: QuoteLine[], forced?: CategoryGroup): Quote => {
+    if (prev.options.group || !termsUntouched(prev, settings)) return { ...prev, lines };
+    const g = forced || dominantGroup(lines.filter((l) => l.type === 'product').map(lineGroup));
+    if (!g) return { ...prev, lines };
+    toast(`Teklif türü: ${GROUP_LABEL[g]} – PDF metinleri bu şablona göre ayarlandı.`, 'info');
+    return { ...prev, lines, options: { ...prev.options, group: g }, terms: termsFromTemplate(settings, g) };
+  };
   const addLines = (nl: QuoteLine[]) => {
     // Aynı ürün tekrar eklenirse miktarı artır (bölüm/paket eklemeleri hariç)
     if (nl.length === 1 && nl[0].productId) {
       const ex = q.lines.find((l) => l.productId === nl[0].productId && l.type === 'product');
       if (ex) return setLines((ls) => ls.map((l) => (l.id === ex.id ? { ...l, qty: l.qty + nl[0].qty } : l)));
     }
-    setLines((ls) => [...ls, ...nl]);
+    update((prev) => autoGroup(prev, [...prev.lines, ...nl]));
+  };
+  const changeGroup = async (g: CategoryGroup) => {
+    if (g === (q.options.group || '')) return;
+    let apply = termsUntouched(q, settings);
+    if (!apply) {
+      apply = await confirm({
+        title: `${GROUP_LABEL[g]} metinleri uygulansın mı?`,
+        message: 'Ödeme planı, ön yazı, teslimat, garanti ve notlar seçtiğiniz teklif türünün şablonuyla değiştirilecek. "Vazgeç" derseniz sadece tür değişir, yazdığınız metinler korunur.',
+        confirmText: 'Şablonu uygula',
+      });
+    }
+    update((prev) => ({ ...prev, options: { ...prev.options, group: g }, ...(apply ? { terms: termsFromTemplate(settings, g) } : {}) }));
   };
   const missingRate = CURRENCIES.filter((c) => c !== 'TRY' && (c === cur || q.lines.some((l) => l.type !== 'section' && l.currency === c)) && !q.rates[c]);
 
@@ -587,12 +641,14 @@ export default function QuoteEditor() {
         cq = r.quote;
       }
       const { buildQuotePdf, savePdf, pdfFileName } = await import('../../pdf/quotePdf');
+      const head = templateHeader(settings, cq.options.group);
       const blob = await buildQuotePdf({
         quote: cq,
         company: settings.company,
         banks: settings.banks,
         brochures: brochures.filter((b) => cq!.options.brochureIds.includes(b.id)),
-        accent: settings.quote.accentColor,
+        accent: head.accent,
+        template: head.template,
         publicUrl: token ? `${location.origin}/t/${token}` : null,
       });
       await savePdf(blob, pdfFileName(cq), mode);
@@ -674,7 +730,7 @@ export default function QuoteEditor() {
   };
 
   const applyGes = (lines: QuoteLine[], info: GesInfo, title: string) => {
-    update((prev) => ({ ...prev, lines: [...prev.lines, ...lines], ges: info, title: prev.title || title }));
+    update((prev) => ({ ...autoGroup(prev, [...prev.lines, ...lines], 'solar'), ges: info, title: prev.title || title }));
   };
 
   const planSum = q.terms.paymentPlan.reduce((s, p) => s + (Number(p.pct) || 0), 0);
@@ -684,15 +740,15 @@ export default function QuoteEditor() {
   return (
     <div>
       {/* ÜST BAR */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mb-5">
+      <div className="flex items-start lg:items-center justify-between gap-3 mb-4 lg:mb-5">
         <div className="flex items-center gap-3 min-w-0">
-          <Link to="/teklifler" className="btn-icon border border-line shrink-0" aria-label="Geri">
+          <Link to="/teklifler" className="btn-icon border border-line shrink-0 w-10 h-10" aria-label="Geri">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-black truncate">{isNew ? 'Yeni Teklif' : q.number}</h1>
-              {!isNew && <StatusBadge status={q.status} />}
+              <h1 className="text-lg sm:text-2xl font-black truncate">{isNew ? 'Yeni Teklif' : q.number}</h1>
+              {!isNew && <StatusBadge status={q.status} className="hidden sm:inline-flex" />}
               {q.approvalRequired && <span className="chip bg-rose-500/15 text-rose-500">Onay Bekliyor</span>}
               {dirty && <span className="chip bg-amber-500/15 text-amber-600 dark:text-amber-400">Kaydedilmedi</span>}
             </div>
@@ -701,9 +757,15 @@ export default function QuoteEditor() {
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {!isNew && (
-            <select className="input-sm w-auto font-bold" value={q.status} onChange={(e) => changeStatus(e.target.value as QuoteStatus)} disabled={readOnly && !isAdmin}>
+            <select
+              className="input-sm w-auto font-bold max-w-[132px] sm:max-w-none"
+              value={q.status}
+              onChange={(e) => changeStatus(e.target.value as QuoteStatus)}
+              disabled={readOnly && !isAdmin}
+              aria-label="Teklif durumu"
+            >
               {QUOTE_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {STATUS_LABEL[s]}
@@ -711,50 +773,64 @@ export default function QuoteEditor() {
               ))}
             </select>
           )}
-          <button className="btn-secondary" onClick={() => makePdf('preview')} disabled={!!pdfBusy || !pricedCount}>
-            {pdfBusy === 'preview' ? <Spinner className="w-4 h-4" /> : <Eye className="w-4 h-4" />} <span className="hidden sm:inline">Önizle</span>
-          </button>
-          <button className="btn-secondary" onClick={() => makePdf('download')} disabled={!!pdfBusy || !pricedCount}>
-            {pdfBusy === 'download' ? <Spinner className="w-4 h-4" /> : <Download className="w-4 h-4" />} PDF
-          </button>
-          <button className="btn-secondary" onClick={openShare} disabled={!pricedCount || q.approvalRequired}>
-            <Share2 className="w-4 h-4" /> <span className="hidden sm:inline">Paylaş</span>
-          </button>
-          {!readOnly && (
-            <button className="btn-primary" onClick={() => save()} disabled={saving || (!dirty && !isNew)}>
-              {saving ? <Spinner className="w-4 h-4" /> : <Save className="w-4 h-4" />} Kaydet
+          <div className="hidden lg:flex gap-2">
+            <button className="btn-secondary" onClick={() => makePdf('preview')} disabled={!!pdfBusy || !pricedCount}>
+              {pdfBusy === 'preview' ? <Spinner className="w-4 h-4" /> : <Eye className="w-4 h-4" />} Önizle
             </button>
-          )}
-          {!isNew && (
-            <div className="relative">
-              <button className="btn-icon border border-line h-[42px] w-[42px]" onClick={() => setMenu(!menu)} aria-label="Diğer">
-                <MoreVertical className="w-5 h-5" />
+            <button className="btn-secondary" onClick={() => makePdf('download')} disabled={!!pdfBusy || !pricedCount}>
+              {pdfBusy === 'download' ? <Spinner className="w-4 h-4" /> : <Download className="w-4 h-4" />} PDF
+            </button>
+            <button className="btn-secondary" onClick={openShare} disabled={!pricedCount || q.approvalRequired}>
+              <Share2 className="w-4 h-4" /> Paylaş
+            </button>
+            {!readOnly && (
+              <button className="btn-primary" onClick={() => save()} disabled={saving || (!dirty && !isNew)}>
+                {saving ? <Spinner className="w-4 h-4" /> : <Save className="w-4 h-4" />} Kaydet
               </button>
-              {menu && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setMenu(false)} />
-                  <div className="absolute right-0 mt-1 z-40 w-60 card shadow-2xl py-1.5 animate-in">
-                    <button className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-semibold hover:bg-surface-2" onClick={() => action('revise')}>
-                      <GitBranch className="w-4 h-4 text-primary" /> Yeni revizyon (v{(revisions.at(-1)?.revision ?? q.revision) + 1})
-                    </button>
-                    <button className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-semibold hover:bg-surface-2" onClick={() => action('duplicate')}>
-                      <Copy className="w-4 h-4 text-primary" /> Kopyala (yeni teklif)
-                    </button>
-                    {isAdmin && (
-                      <button className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-semibold hover:bg-surface-2" onClick={() => action('kit')}>
-                        <PackagePlus className="w-4 h-4 text-primary" /> Hazır paket olarak kaydet
-                      </button>
-                    )}
-                    {isAdmin && (
-                      <button className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-semibold hover:bg-surface-2 text-rose-500" onClick={() => action('delete')}>
-                        <Trash2 className="w-4 h-4" /> Teklifi sil
-                      </button>
-                    )}
+            )}
+          </div>
+          <div className="relative">
+            <button className="btn-icon border border-line h-10 w-10 lg:h-[42px] lg:w-[42px]" onClick={() => setMenu(!menu)} aria-label="Diğer işlemler">
+              <MoreVertical className="w-5 h-5" />
+            </button>
+            {menu && (
+              <>
+                <div className="fixed inset-0 z-30 bg-black/40 lg:bg-transparent" onClick={() => setMenu(false)} />
+                <div className="fixed lg:absolute inset-x-0 bottom-0 lg:bottom-auto lg:inset-x-auto lg:right-0 lg:mt-1 z-40 lg:w-64 bg-surface border border-line rounded-t-3xl lg:rounded-2xl shadow-2xl py-2 lg:py-1.5 animate-in safe-bottom">
+                  <div className="lg:hidden mx-auto w-10 h-1.5 rounded-full bg-line mb-2" />
+                  <div className="lg:hidden">
+                    <MenuItem icon={Eye} onClick={() => { setMenu(false); makePdf('preview'); }} disabled={!!pdfBusy || !pricedCount}>
+                      PDF önizle
+                    </MenuItem>
+                    <MenuItem icon={Share2} onClick={() => { setMenu(false); openShare(); }} disabled={!pricedCount || q.approvalRequired}>
+                      Müşteriyle paylaş (WhatsApp / link)
+                    </MenuItem>
                   </div>
-                </>
-              )}
-            </div>
-          )}
+                  {!isNew && (
+                    <>
+                      <MenuItem icon={GitBranch} onClick={() => action('revise')}>
+                        Yeni revizyon (v{(revisions.at(-1)?.revision ?? q.revision) + 1})
+                      </MenuItem>
+                      <MenuItem icon={Copy} onClick={() => action('duplicate')}>
+                        Kopyala (yeni teklif)
+                      </MenuItem>
+                      {isAdmin && (
+                        <MenuItem icon={PackagePlus} onClick={() => action('kit')}>
+                          Hazır paket olarak kaydet
+                        </MenuItem>
+                      )}
+                      {isAdmin && (
+                        <MenuItem icon={Trash2} danger onClick={() => action('delete')}>
+                          Teklifi sil
+                        </MenuItem>
+                      )}
+                    </>
+                  )}
+                  {isNew && <div className="lg:block hidden px-4 py-2.5 text-xs text-muted">Diğer işlemler ilk kayıttan sonra açılır.</div>}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -786,9 +862,30 @@ export default function QuoteEditor() {
               <User className="w-5 h-5 text-primary" /> Müşteri & Proje
             </h2>
             <CustomerSection q={q} update={update} saveCustomer={saveCustomer} setSaveCustomer={setSaveCustomer} />
+            <div>
+              <label className="label">Teklif türü</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(['', ...MAIN_GROUPS] as CategoryGroup[]).map((g) => {
+                  const on = (q.options.group || '') === g;
+                  return (
+                    <button
+                      key={g || 'genel'}
+                      type="button"
+                      onClick={() => changeGroup(g)}
+                      className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-bold transition ${
+                        on ? 'bg-primary/12 text-primary border-primary/50 ring-2 ring-primary/15' : 'bg-surface-2 border-line text-muted hover:text-fg'
+                      }`}
+                    >
+                      <DynIcon name={GROUP_ICON[g]} className="w-4 h-4" /> {GROUP_LABEL[g]}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted mt-1.5">PDF başlığı, ödeme planı, garanti ve notlar bu türün şablonundan gelir (Ayarlar → Proforma PDF).</p>
+            </div>
             <div className="grid sm:grid-cols-[1fr_180px] gap-3 pt-1">
               <Field label="Proje / konu">
-                <input className="input" value={q.title} onChange={(e) => update({ title: e.target.value })} placeholder="Örn: 10 kW Hibrit Ev Tipi GES Kurulumu" />
+                <input className="input" value={q.title} onChange={(e) => update({ title: e.target.value })} placeholder={q.options.group === 'zayif' ? 'Örn: 8 Kameralı IP Güvenlik Sistemi' : q.options.group === 'elektronik' ? 'Örn: Daire Beyaz Eşya Seti' : 'Örn: 10 kW Hibrit Ev Tipi GES Kurulumu'} />
               </Field>
               <Field
                 label="Geçerlilik tarihi"
@@ -805,16 +902,18 @@ export default function QuoteEditor() {
               <h2 className="font-extrabold flex items-center gap-2">
                 <FileText className="w-5 h-5 text-primary" /> Kalemler <span className="text-muted font-semibold">({pricedCount})</span>
               </h2>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap [&>button]:shrink-0">
                 <button type="button" className="btn-primary btn-sm" onClick={() => setPicker('products')}>
                   <Plus className="w-4 h-4" /> Ürün
                 </button>
                 <button type="button" className="btn-secondary btn-sm" onClick={() => setPicker('kits')}>
                   <Layers className="w-4 h-4" /> Paket
                 </button>
-                <button type="button" className="btn-secondary btn-sm" onClick={() => setGes(true)}>
-                  <Sun className="w-4 h-4 text-amber-500" /> GES Asistanı
-                </button>
+                {(!q.options.group || q.options.group === 'solar') && (
+                  <button type="button" className="btn-secondary btn-sm" onClick={() => setGes(true)}>
+                    <Sun className="w-4 h-4 text-amber-500" /> GES Asistanı
+                  </button>
+                )}
                 <button type="button" className="btn-secondary btn-sm" onClick={() => setLines((ls) => [...ls, customLine(cur, settings.quote.defaultVatRate)])}>
                   <PencilLine className="w-4 h-4" /> Serbest
                 </button>
@@ -825,14 +924,19 @@ export default function QuoteEditor() {
             </div>
             {q.lines.length === 0 ? (
               <div className="p-10 text-center">
-                <p className="text-muted text-sm mb-4">Teklife ürün, hazır paket ekleyin veya GES asistanıyla sistemi otomatik oluşturun.</p>
+                <p className="text-muted text-sm mb-4">Teklife ürün veya hazır paket ekleyin{!q.options.group || q.options.group === 'solar' ? ', ya da GES asistanıyla sistemi otomatik oluşturun' : ''}.</p>
                 <div className="flex flex-wrap justify-center gap-2">
                   <button type="button" className="btn-primary" onClick={() => setPicker('products')}>
                     <Plus className="w-4 h-4" /> Ürün Ekle
                   </button>
-                  <button type="button" className="btn-secondary" onClick={() => setGes(true)}>
-                    <Sun className="w-4 h-4 text-amber-500" /> GES Asistanı
+                  <button type="button" className="btn-secondary" onClick={() => setPicker('kits')}>
+                    <Layers className="w-4 h-4" /> Paket
                   </button>
+                  {(!q.options.group || q.options.group === 'solar') && (
+                    <button type="button" className="btn-secondary" onClick={() => setGes(true)}>
+                      <Sun className="w-4 h-4 text-amber-500" /> GES Asistanı
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -947,41 +1051,28 @@ export default function QuoteEditor() {
 
           {/* ŞARTLAR */}
           <section className="card p-4 sm:p-5 space-y-4">
-            <h2 className="font-extrabold">Ödeme, Garanti & Ekler</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-extrabold">Ödeme, Garanti & Ekler</h2>
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={async () => {
+                  if (await confirm({ title: 'Şablon metinleri yeniden yüklensin mi?', message: `${GROUP_LABEL[q.options.group || '']} şablonundaki güncel metinler bu teklife uygulanacak.`, confirmText: 'Yükle' }))
+                    update((x) => ({ ...x, terms: termsFromTemplate(settings, x.options.group) }));
+                }}
+              >
+                <RefreshCw className="w-4 h-4" /> {GROUP_LABEL[q.options.group || '']} şablonunu yükle
+              </button>
+            </div>
+            <Field label="Ön yazı" hint='PDF’te kalem tablosundan önce "Sayın …" hitabıyla görünür. Boşsa gösterilmez.'>
+              <textarea className="input min-h-[64px] text-sm" value={q.terms.intro || ''} onChange={(e) => update((x) => ({ ...x, terms: { ...x.terms, intro: e.target.value } }))} />
+            </Field>
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="label mb-0">Ödeme planı</label>
                 <span className={`text-xs font-bold ${Math.abs(planSum - 100) < 0.01 || planSum === 0 ? 'text-muted' : 'text-amber-500'}`}>Toplam: %{fmtNum(planSum, 2)}</span>
               </div>
-              <div className="space-y-2">
-                {q.terms.paymentPlan.map((p, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_90px_110px_32px] gap-2 items-center">
-                    <input
-                      className="input-sm"
-                      value={p.label}
-                      placeholder="Aşama (örn: Sipariş onayında peşin)"
-                      onChange={(e) => update((x) => ({ ...x, terms: { ...x.terms, paymentPlan: x.terms.paymentPlan.map((y, j) => (j === i ? { ...y, label: e.target.value } : y)) } }))}
-                    />
-                    <NumberInput
-                      className="input-sm"
-                      value={p.pct}
-                      suffix="%"
-                      onChange={(v) => update((x) => ({ ...x, terms: { ...x.terms, paymentPlan: x.terms.paymentPlan.map((y, j) => (j === i ? { ...y, pct: v } : y)) } }))}
-                    />
-                    <span className="text-sm text-right font-semibold tabular-nums">{fmtMoney((t.grand * p.pct) / 100, cur)}</span>
-                    <button
-                      type="button"
-                      className="btn-icon w-8 h-8"
-                      onClick={() => update((x) => ({ ...x, terms: { ...x.terms, paymentPlan: x.terms.paymentPlan.filter((_, j) => j !== i) } }))}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-                <button type="button" className="btn-ghost btn-sm" onClick={() => update((x) => ({ ...x, terms: { ...x.terms, paymentPlan: [...x.terms.paymentPlan, { label: '', pct: 0 }] } }))}>
-                  <Plus className="w-4 h-4" /> Aşama ekle
-                </button>
-              </div>
+              <PlanEditor plan={q.terms.paymentPlan} total={t.grand} currency={cur} onChange={(paymentPlan) => update((x) => ({ ...x, terms: { ...x.terms, paymentPlan } }))} />
             </div>
             <div className="grid lg:grid-cols-2 gap-4">
               <Field label="Teslimat & kurulum">
@@ -1021,7 +1112,7 @@ export default function QuoteEditor() {
 
         {/* SAĞ PANEL */}
         <aside className="space-y-4 xl:sticky xl:top-6">
-          <div className="card p-5">
+          <div className="card p-5 scroll-mt-20" ref={summaryRef}>
             <div className="space-y-2 text-sm">
               <Row label="Ara toplam" value={fmtMoney(t.gross - t.lineDiscount, cur)} />
               {t.generalDiscount > 0 && <Row label="Genel iskonto" value={`-${fmtMoney(t.generalDiscount, cur)}`} accent="text-emerald-600 dark:text-emerald-400" />}
@@ -1141,10 +1232,43 @@ export default function QuoteEditor() {
         </aside>
       </div>
 
-      <ProductPicker open={!!picker} initialTab={picker || 'products'} onClose={() => setPicker('')} onAdd={addLines} existing={q.lines} />
+      {/* MOBİL ALT EYLEM ÇUBUĞU */}
+      <div className="lg:hidden fixed inset-x-0 bottom-0 z-40 bg-surface/95 backdrop-blur border-t border-line safe-bottom">
+        <div className="flex items-center gap-2 px-3 py-2.5">
+          <button type="button" className="flex-1 min-w-0 text-left" onClick={() => summaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+            <div className="text-[11px] font-bold text-muted uppercase tracking-wide">Genel toplam{q.vatMode === 'included' ? ' (KDV d.)' : ''}</div>
+            <div className="text-lg font-black text-primary tabular-nums leading-tight truncate">{fmtMoney(t.grand, cur)}</div>
+          </button>
+          <button className="btn-secondary h-11 w-11 p-0" onClick={() => makePdf('download')} disabled={!!pdfBusy || !pricedCount} aria-label="PDF indir">
+            {pdfBusy === 'download' ? <Spinner className="w-5 h-5" /> : <Download className="w-5 h-5" />}
+          </button>
+          <button className="btn-secondary h-11 w-11 p-0" onClick={openShare} disabled={!pricedCount || q.approvalRequired} aria-label="Paylaş">
+            <Share2 className="w-5 h-5" />
+          </button>
+          {!readOnly && (
+            <button className="btn-primary h-11 px-5" onClick={() => save()} disabled={saving || (!dirty && !isNew)}>
+              {saving ? <Spinner className="w-4 h-4" /> : <Save className="w-4 h-4" />} Kaydet
+            </button>
+          )}
+        </div>
+      </div>
+
+      <ProductPicker open={!!picker} initialTab={picker || 'products'} onClose={() => setPicker('')} onAdd={addLines} existing={q.lines} group={q.options.group || ''} />
       <GesWizard open={ges} onClose={() => setGes(false)} onApply={applyGes} />
       {share && <ShareModal open={!!share} onClose={() => setShare('')} q={q} url={share} />}
     </div>
+  );
+}
+
+function MenuItem({ icon: Icon, children, onClick, danger, disabled }: { icon: typeof Eye; children: React.ReactNode; onClick: () => void; danger?: boolean; disabled?: boolean }) {
+  return (
+    <button
+      className={`w-full flex items-center gap-3 px-5 lg:px-4 py-3.5 lg:py-2.5 text-[15px] lg:text-sm font-semibold hover:bg-surface-2 disabled:opacity-40 ${danger ? 'text-rose-500' : ''}`}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <Icon className={`w-5 h-5 lg:w-4 lg:h-4 ${danger ? '' : 'text-primary'}`} /> {children}
+    </button>
   );
 }
 

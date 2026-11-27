@@ -2,10 +2,11 @@ import { Hono } from 'hono';
 import type { AppEnv, Ctx, Env } from './core';
 import { fail, newId, nowIso, num, str, parseJson, requireAdmin, isAdmin, audit, auditStmt, loadSettings, setSettingStmt } from './core';
 import { requireAuth } from './auth';
-import type { Category, Currency, Kit, Product, Rates, SpecField, CategoryRole, PricingMode, AppSettings, Brochure } from '../shared/types';
+import type { Category, Currency, Kit, Product, Rates, SpecField, CategoryRole, CategoryGroup, PricingMode, AppSettings, Brochure, PdfTemplate } from '../shared/types';
+import { MAIN_GROUPS, PDF_TEMPLATE_KEYS } from '../shared/types';
 import { CURRENCIES } from '../shared/types';
 import { priceFromMargin } from '../shared/calc';
-import { mergeSettings } from '../shared/catalog';
+import { mergeSettings, groupOfRole } from '../shared/catalog';
 
 const cur = (v: unknown, def: Currency = 'USD'): Currency => (CURRENCIES.includes(v as Currency) ? (v as Currency) : def);
 
@@ -67,6 +68,7 @@ interface CategoryRow {
   label: string;
   icon: string | null;
   role: string;
+  grp?: string | null;
   fields: string;
   sort: number;
 }
@@ -74,10 +76,20 @@ const categoryOut = (r: CategoryRow): Category => ({
   id: r.id,
   label: r.label,
   icon: r.icon || 'Box',
+  group: ((r.grp || groupOfRole(r.role || '')) as CategoryGroup) || '',
   role: (r.role || '') as CategoryRole,
   fields: parseJson<SpecField[]>(r.fields, []),
   sort: r.sort,
 });
+
+/** Ana kategori ve rolü doğrular; rol başka bir ana kategoriye aitse rol temizlenir */
+function sanitizeGroupRole(b: Partial<Category>): { group: CategoryGroup; role: string } {
+  const role = str(b.role, 20);
+  const roleGroup = groupOfRole(role);
+  let group = (MAIN_GROUPS as string[]).includes(String(b.group)) ? (b.group as CategoryGroup) : '';
+  if (!group) group = roleGroup;
+  return { group, role: roleGroup && roleGroup !== group ? '' : role };
+}
 
 function sanitizeFields(input: unknown): SpecField[] {
   if (!Array.isArray(input)) return [];
@@ -174,6 +186,15 @@ async function normalizeProduct(env: Env, input: ProductInput, existing?: Produc
   if (photo.startsWith('data:')) photo = await base64ToFile(env, input.photo as string);
   else if (/^https?:\/\//i.test(photo) && photo !== existing?.photo) photo = await importExternalImage(env, photo);
 
+  // KDV zorunlu değil: boş bırakılırsa mevcut değer, yoksa ayarlardaki varsayılan KDV kullanılır
+  const vatRaw = input.vatRate as unknown;
+  const vatRate =
+    vatRaw == null || vatRaw === '' || !Number.isFinite(num(vatRaw, NaN))
+      ? existing
+        ? existing.vat_rate
+        : (await loadSettings(env)).quote.defaultVatRate
+      : Math.min(100, Math.max(0, num(vatRaw)));
+
   const priceChanged =
     !existing ||
     existing.sale_price !== salePrice ||
@@ -196,7 +217,7 @@ async function normalizeProduct(env: Env, input: ProductInput, existing?: Produc
     marginPct,
     salePrice,
     saleCurrency,
-    vatRate: Math.min(100, Math.max(0, num(input.vatRate, 20))),
+    vatRate,
     active: input.active === false ? 0 : 1,
     priceUpdatedAt: priceChanged ? nowIso() : existing!.price_updated_at,
   };
@@ -233,8 +254,9 @@ catalogRoutes.post('/categories', async (c) => {
   if (!label) fail(400, 'Kategori adı gerekli.');
   const id = newId('cat');
   const max = await c.env.DB.prepare('SELECT COALESCE(MAX(sort),0) AS m FROM categories').first<{ m: number }>();
-  await c.env.DB.prepare('INSERT INTO categories (id, label, icon, role, fields, sort, created_at) VALUES (?,?,?,?,?,?,?)')
-    .bind(id, label, str(b.icon, 30) || 'Box', str(b.role, 20), JSON.stringify(sanitizeFields(b.fields)), (max?.m ?? 0) + 1, nowIso())
+  const gr = sanitizeGroupRole(b);
+  await c.env.DB.prepare('INSERT INTO categories (id, label, icon, role, grp, fields, sort, created_at) VALUES (?,?,?,?,?,?,?,?)')
+    .bind(id, label, str(b.icon, 30) || 'Box', gr.role, gr.group, JSON.stringify(sanitizeFields(b.fields)), (max?.m ?? 0) + 1, nowIso())
     .run();
   await audit(c, 'category.create', 'category', id, label);
   return c.json({ id });
@@ -246,8 +268,9 @@ catalogRoutes.put('/categories/:id', async (c) => {
   const b = await c.req.json<Partial<Category>>();
   const label = str(b.label, 60);
   if (!label) fail(400, 'Kategori adı gerekli.');
-  await c.env.DB.prepare('UPDATE categories SET label = ?, icon = ?, role = ?, fields = ? WHERE id = ?')
-    .bind(label, str(b.icon, 30) || 'Box', str(b.role, 20), JSON.stringify(sanitizeFields(b.fields)), id)
+  const gr = sanitizeGroupRole(b);
+  await c.env.DB.prepare('UPDATE categories SET label = ?, icon = ?, role = ?, grp = ?, fields = ? WHERE id = ?')
+    .bind(label, str(b.icon, 30) || 'Box', gr.role, gr.group, JSON.stringify(sanitizeFields(b.fields)), id)
     .run();
   await audit(c, 'category.update', 'category', id, label);
   return c.json({ ok: true });
@@ -354,6 +377,7 @@ catalogRoutes.post('/products/bulk', async (c) => {
   let created = 0;
   let updated = 0;
   let skipped = 0;
+  let defaultVat: number | undefined;
   for (const r of rows) {
     const existing = (r.id && byId.get(r.id)) || (r.sku && bySku.get(str(r.sku, 60))) || undefined;
     if (mode === 'prices') {
@@ -379,6 +403,10 @@ catalogRoutes.post('/products/bulk', async (c) => {
       );
       updated++;
       continue;
+    }
+    if (!existing && (r.vatRate == null || (r.vatRate as unknown) === '')) {
+      defaultVat ??= (await loadSettings(c.env)).quote.defaultVatRate;
+      r.vatRate = defaultVat;
     }
     const base: ProductInput = existing ? { ...productOut(existing, true), ...r, specs: { ...productOut(existing, true).specs, ...(r.specs || {}) } } : r;
     if (existing && !r.photo) base.photo = existing.photo || '';
@@ -574,6 +602,24 @@ export async function listBrochures(env: Env) {
   return results.map(brochureOut);
 }
 
+function sanitizeTemplate(t: PdfTemplate): PdfTemplate {
+  const color = str(t.accentColor, 9);
+  return {
+    title: str(t.title, 40),
+    subtitle: str(t.subtitle, 40),
+    slogan: str(t.slogan, 120),
+    intro: str(t.intro, 1500),
+    accentColor: /^#[0-9a-fA-F]{3,8}$/.test(color) ? color : '',
+    paymentPlan: (Array.isArray(t.paymentPlan) ? t.paymentPlan : [])
+      .slice(0, 12)
+      .map((p) => ({ label: str(p.label, 200), pct: num(p.pct) }))
+      .filter((p) => p.label || p.pct),
+    delivery: str(t.delivery, 1000),
+    warranty: str(t.warranty, 3000),
+    notes: str(t.notes, 3000),
+  };
+}
+
 catalogRoutes.get('/settings', async (c) => {
   const settings = await loadSettings(c.env);
   const brochures = await listBrochures(c.env);
@@ -588,12 +634,19 @@ catalogRoutes.put('/settings', async (c) => {
   const merged = mergeSettings({ ...(await loadSettings(c.env)), ...body });
   merged.quote.prefix = (merged.quote.prefix || 'OSE').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8) || 'OSE';
   merged.quote.validityDays = Math.max(1, Math.min(365, num(merged.quote.validityDays, 15)));
+  for (const k of PDF_TEMPLATE_KEYS) merged.pdf[k] = sanitizeTemplate(merged.pdf[k]);
+  // Eski alanları Genel şablonla senkron tut (geriye dönük uyumluluk)
+  merged.quote.paymentPlan = merged.pdf.genel.paymentPlan;
+  merged.quote.delivery = merged.pdf.genel.delivery;
+  merged.quote.warranty = merged.pdf.genel.warranty;
+  merged.quote.notes = merged.pdf.genel.notes;
   await c.env.DB.batch([
     setSettingStmt(c.env, 'company', merged.company),
     setSettingStmt(c.env, 'quote', merged.quote),
     setSettingStmt(c.env, 'banks', merged.banks.slice(0, 10)),
     setSettingStmt(c.env, 'notify', merged.notify),
     setSettingStmt(c.env, 'ges', merged.ges),
+    setSettingStmt(c.env, 'pdf', merged.pdf),
     auditStmt(c, 'settings.update', 'settings', null, Object.keys(body).join(', ')),
   ]);
   return c.json({ settings: merged });

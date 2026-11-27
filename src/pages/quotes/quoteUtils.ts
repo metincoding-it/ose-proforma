@@ -1,8 +1,29 @@
-import type { AppSettings, Brochure, Category, Product, Quote, QuoteLine } from '../../../shared/types';
+import type { AppSettings, Brochure, Category, CategoryGroup, Product, Quote, QuoteLine, QuoteTerms } from '../../../shared/types';
+import { templateKey } from '../../../shared/types';
 import { productSummary, productTitle } from '../../../shared/catalog';
 import { addDaysIso, uid } from '../../lib/format';
 
-export function emptyQuote(settings: AppSettings, brochures: Brochure[]): Quote {
+/** Ana kategori şablonundan teklif şartlarını üretir */
+export function termsFromTemplate(settings: AppSettings, group: CategoryGroup | undefined): QuoteTerms {
+  const t = settings.pdf[templateKey(group)];
+  return { intro: t.intro, paymentPlan: t.paymentPlan.map((p) => ({ ...p })), delivery: t.delivery, warranty: t.warranty, notes: t.notes };
+}
+
+/** Teklifin şartları seçili şablonla birebir aynı mı (kullanıcı elle değiştirmemiş mi)? */
+export function termsUntouched(q: Quote, settings: AppSettings): boolean {
+  const a = q.terms;
+  const b = termsFromTemplate(settings, q.options.group);
+  const plan = (x: QuoteTerms) => JSON.stringify(x.paymentPlan.map((p) => [p.label, Number(p.pct)]));
+  return (a.intro || '') === (b.intro || '') && a.delivery === b.delivery && a.warranty === b.warranty && a.notes === b.notes && plan(a) === plan(b);
+}
+
+/** PDF/online sayfa için şablon başlıkları ve vurgu rengi */
+export function templateHeader(settings: AppSettings, group: CategoryGroup | undefined) {
+  const t = settings.pdf[templateKey(group)];
+  return { template: { title: t.title, subtitle: t.subtitle, slogan: t.slogan }, accent: t.accentColor || settings.quote.accentColor };
+}
+
+export function emptyQuote(settings: AppSettings, brochures: Brochure[], group: CategoryGroup = ''): Quote {
   const s = settings.quote;
   return {
     id: '',
@@ -21,12 +42,13 @@ export function emptyQuote(settings: AppSettings, brochures: Brochure[]): Quote 
     generalDiscountType: 'pct',
     generalDiscountValue: 0,
     lines: [],
-    terms: { paymentPlan: s.paymentPlan.map((p) => ({ ...p })), delivery: s.delivery, warranty: s.warranty, notes: s.notes },
+    terms: termsFromTemplate(settings, group),
     options: {
       showUnitPrices: s.showUnitPrices,
       showPhotos: s.showPhotos,
       showTryEquivalent: s.showTryEquivalent,
       brochureIds: brochures.filter((b) => b.defaultOn).map((b) => b.id),
+      group,
     },
     ges: null,
     validUntil: addDaysIso(s.validityDays),

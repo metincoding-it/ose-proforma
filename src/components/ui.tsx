@@ -34,6 +34,20 @@ import {
   Flame,
   Tag,
   Package,
+  Tv,
+  Refrigerator,
+  WashingMachine,
+  AirVent,
+  Siren,
+  House,
+  BellRing,
+  Speaker,
+  Fan,
+  Lock,
+  Monitor,
+  Smartphone,
+  Microwave,
+  DoorOpen,
 } from 'lucide-react';
 
 const ICON_MAP: Record<string, ElementType> = {
@@ -62,6 +76,20 @@ const ICON_MAP: Record<string, ElementType> = {
   Flame,
   Tag,
   Package,
+  Tv,
+  Refrigerator,
+  WashingMachine,
+  AirVent,
+  Siren,
+  House,
+  BellRing,
+  Speaker,
+  Fan,
+  Lock,
+  Monitor,
+  Smartphone,
+  Microwave,
+  DoorOpen,
 };
 import type { QuoteStatus } from '../../shared/types';
 import { STATUS_LABEL } from '../../shared/types';
@@ -108,18 +136,31 @@ export function Modal({
   }, [open, onClose]);
   if (!open) return null;
   const w = { sm: 'sm:max-w-md', md: 'sm:max-w-xl', lg: 'sm:max-w-3xl', xl: 'sm:max-w-5xl' }[size];
+  // Büyük formlar mobilde tam ekran açılır; küçükler alttan kayan sayfa olarak
+  const full = size === 'lg' || size === 'xl';
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
-      <div className={`relative w-full ${w} bg-surface border border-line rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[94vh] sm:max-h-[90vh] flex flex-col animate-in`}>
-        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-line">
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={`relative w-full ${w} bg-surface border border-line shadow-2xl flex flex-col animate-in sm:rounded-2xl sm:max-h-[90vh] ${
+          full ? 'h-[100dvh] sm:h-auto rounded-none border-0 sm:border' : 'rounded-t-3xl max-h-[92dvh]'
+        }`}
+      >
+        {!full && <div className="sm:hidden mx-auto mt-2 w-10 h-1.5 rounded-full bg-line" />}
+        <div className={`flex items-center justify-between gap-3 px-4 sm:px-5 py-3 sm:py-4 border-b border-line ${full ? 'pt-[max(0.75rem,env(safe-area-inset-top))] sm:pt-4' : ''}`}>
           <h3 className="text-lg font-extrabold truncate">{title}</h3>
-          <button className="btn-icon" onClick={onClose} aria-label="Kapat">
+          <button className="btn-icon shrink-0" onClick={onClose} aria-label="Kapat">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-5 overflow-y-auto flex-1">{children}</div>
-        {footer && <div className="px-5 py-4 border-t border-line flex flex-wrap justify-end gap-2 safe-bottom">{footer}</div>}
+        <div className="p-4 sm:p-5 overflow-y-auto overflow-x-hidden overscroll-contain flex-1">{children}</div>
+        {footer && (
+          <div className="px-4 sm:px-5 py-3 sm:py-4 border-t border-line flex flex-wrap justify-end gap-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4 [&>*]:flex-1 sm:[&>*]:flex-none">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -211,12 +252,12 @@ export function Segmented<T extends string>({
 
 export function PageHeader({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-5">
+    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4 sm:mb-5">
       <div className="min-w-0">
-        <h1 className="text-2xl sm:text-[28px] font-black tracking-tight">{title}</h1>
+        <h1 className="text-[22px] sm:text-[28px] font-black tracking-tight leading-tight">{title}</h1>
         {subtitle && <p className="text-sm text-muted mt-0.5">{subtitle}</p>}
       </div>
-      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+      {actions && <div className="flex gap-2 [&>*]:flex-1 sm:[&>*]:flex-none empty:hidden">{actions}</div>}
     </div>
   );
 }
@@ -246,6 +287,20 @@ export const ICON_CHOICES = [
   'Droplets',
   'Flame',
   'Tag',
+  'Tv',
+  'Refrigerator',
+  'WashingMachine',
+  'AirVent',
+  'Siren',
+  'House',
+  'BellRing',
+  'Speaker',
+  'Fan',
+  'Lock',
+  'Monitor',
+  'Smartphone',
+  'Microwave',
+  'DoorOpen',
 ];
 
 export function DynIcon({ name, className = 'w-5 h-5' }: { name?: string; className?: string }) {

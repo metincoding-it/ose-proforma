@@ -196,7 +196,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   return (
     <UiCtx.Provider value={{ toast, confirm }}>
       {children}
-      <div className="fixed z-[80] bottom-24 md:bottom-6 right-3 left-3 md:left-auto flex flex-col gap-2 items-end pointer-events-none">
+      <div className="fixed z-[80] bottom-[calc(88px+env(safe-area-inset-bottom))] lg:bottom-6 right-3 left-3 md:left-auto flex flex-col gap-2 items-end pointer-events-none">
         {toasts.map((t) => (
           <div
             key={t.id}
@@ -213,12 +213,12 @@ export function UiProvider({ children }: { children: ReactNode }) {
         ))}
       </div>
       {dialog && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center sm:p-4">
           <div className="absolute inset-0 bg-black/60" onClick={() => close(false)} />
-          <div className="relative card p-6 w-full max-w-md animate-in shadow-2xl">
+          <div className="relative card p-5 sm:p-6 w-full sm:max-w-md animate-in shadow-2xl rounded-b-none sm:rounded-2xl pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-6">
             <h3 className="text-lg font-extrabold">{dialog.title}</h3>
             {dialog.message && <p className="text-sm text-muted mt-2 whitespace-pre-line">{dialog.message}</p>}
-            <div className="flex justify-end gap-2 mt-6">
+            <div className="flex justify-end gap-2 mt-6 [&>*]:flex-1 sm:[&>*]:flex-none">
               <button className="btn-secondary" onClick={() => close(false)}>
                 Vazgeç
               </button>

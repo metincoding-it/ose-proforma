@@ -13,6 +13,7 @@ interface PublicData {
   company: CompanySettings;
   banks: BankAccount[];
   accentColor: string;
+  template?: { title?: string; subtitle?: string; slogan?: string; intro?: string };
   brochures: Brochure[];
   newer: { number: string; token: string | null } | null;
   expired: boolean;
@@ -89,7 +90,7 @@ export default function PublicQuote() {
     setPdfBusy(true);
     try {
       const { buildQuotePdf, savePdf, pdfFileName } = await import('../pdf/quotePdf');
-      const blob = await buildQuotePdf({ quote: q, company: co, banks: d.banks, brochures: d.brochures, accent, publicUrl: `${location.origin}/t/${token}`, proxyToken: token });
+      const blob = await buildQuotePdf({ quote: q, company: co, banks: d.banks, brochures: d.brochures, accent, template: d.template, publicUrl: `${location.origin}/t/${token}`, proxyToken: token });
       await savePdf(blob, pdfFileName(q), 'download');
     } catch (e) {
       toast('PDF oluşturulamadı: ' + errMsg(e), 'error');
@@ -119,7 +120,7 @@ export default function PublicQuote() {
             {co.logo && <img src={co.logo} alt="" className="w-14 h-14 rounded-xl object-contain border border-line bg-white" />}
             <div>
               <div className="font-black text-xl tracking-wide">{co.name}</div>
-              {co.slogan && <div className="text-sm text-muted">{co.slogan}</div>}
+              {(d.template?.slogan || co.slogan) && <div className="text-sm text-muted">{d.template?.slogan || co.slogan}</div>}
             </div>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
@@ -176,7 +177,7 @@ export default function PublicQuote() {
           <div className="p-5 sm:p-6 grid sm:grid-cols-[1fr_auto] gap-5">
             <div>
               <div className="text-xs font-bold tracking-widest uppercase" style={{ color: accent }}>
-                Fiyat Teklifi
+                {d.template?.title || 'Fiyat Teklifi'}
               </div>
               <h1 className="text-2xl sm:text-3xl font-black mt-1">{q.title || 'Sistem Kurulum Teklifi'}</h1>
               <div className="mt-3 text-sm">
@@ -184,6 +185,7 @@ export default function PublicQuote() {
                 <div className="font-bold text-base">{q.customer.company || q.customer.name || 'Değerli Müşterimiz'}</div>
                 {q.customer.company && q.customer.name && <div className="text-muted">{q.customer.name}</div>}
               </div>
+              {q.terms.intro && <p className="mt-3 text-sm text-muted whitespace-pre-line">{q.terms.intro}</p>}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-1 gap-x-6 gap-y-2 text-sm sm:text-right">
               <div>
@@ -351,16 +353,16 @@ export default function PublicQuote() {
               {fmtMoney(t.grand, cur)}
             </div>
           </div>
-          <button className="btn-secondary flex-1 sm:flex-none" onClick={pdf} disabled={pdfBusy}>
+          <button className={`btn-secondary sm:flex-none ${canAct ? 'px-3' : 'flex-1'}`} onClick={pdf} disabled={pdfBusy} aria-label="PDF indir">
             {pdfBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} PDF
           </button>
           {canAct && (
             <>
-              <button className="btn-secondary flex-1 sm:flex-none" onClick={() => setModal('revision')}>
-                <PencilLine className="w-4 h-4" /> Revize İste
+              <button className="btn-secondary px-3 sm:flex-none" onClick={() => setModal('revision')}>
+                <PencilLine className="w-4 h-4" /> Revize
               </button>
-              <button className="btn flex-[2] sm:flex-none text-white shadow-lg" style={{ background: d.expired ? '#94a3b8' : '#059669' }} onClick={() => (d.expired ? toast('Teklifin geçerlilik süresi dolmuş. Lütfen bizimle iletişime geçin.', 'error') : setModal('approve'))}>
-                <CheckCircle2 className="w-5 h-5" /> Teklifi Onayla
+              <button className="btn flex-1 min-w-0 sm:flex-none text-white shadow-lg" style={{ background: d.expired ? '#94a3b8' : '#059669' }} onClick={() => (d.expired ? toast('Teklifin geçerlilik süresi dolmuş. Lütfen bizimle iletişime geçin.', 'error') : setModal('approve'))}>
+                <CheckCircle2 className="w-5 h-5 shrink-0" /> Onayla
               </button>
             </>
           )}

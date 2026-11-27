@@ -1,7 +1,7 @@
 {
   "name": "ose-proforma",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.1.0",
   "type": "module",
   "scripts": {
     "dev": "npm run build && concurrently -k \"wrangler pages dev dist --d1 DB --kv OSE_DB --port 8788 --live-reload\" \"vite\"",
