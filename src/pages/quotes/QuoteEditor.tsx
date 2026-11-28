@@ -33,6 +33,8 @@ import {
   AlertTriangle,
   FileText,
   Lock,
+  Minus,
+  SlidersHorizontal,
 } from 'lucide-react';
 import type { CategoryGroup, Currency, Customer, GesInfo, Quote, QuoteEvent, QuoteLine, QuoteStatus } from '../../../shared/types';
 import { CURRENCIES, CURRENCY_SYMBOL, GROUP_ICON, GROUP_LABEL, MAIN_GROUPS, QUOTE_STATUSES, STATUS_LABEL, VAT_RATES } from '../../../shared/types';
@@ -68,6 +70,8 @@ function LineRow({
   onChange,
   onRemove,
   onMove,
+  photo,
+  icon,
 }: {
   line: QuoteLine;
   lc: LineCalc;
@@ -78,8 +82,12 @@ function LineRow({
   onChange: (l: QuoteLine) => void;
   onRemove: () => void;
   onMove: (d: -1 | 1) => void;
+  photo?: string;
+  icon?: string;
 }) {
   const set = <K extends keyof QuoteLine>(k: K, v: QuoteLine[K]) => onChange({ ...line, [k]: v });
+  const [details, setDetails] = useState(false);
+  const [editSummary, setEditSummary] = useState(false);
   const mover = (
     <div className="flex flex-col">
       <button type="button" className="text-muted hover:text-fg disabled:opacity-30" disabled={index === 0} onClick={() => onMove(-1)} aria-label="Yukarı">
@@ -122,118 +130,171 @@ function LineRow({
         })()
       : null;
 
+  const hasDiscount = lc.lineDiscount > 0.004;
+  const detailChips = [
+    hasDiscount ? `İsk. ${line.discountType === 'pct' ? `%${fmtNum(line.discountValue, 2)}` : fmtMoney(line.discountValue, q.currency)}` : '',
+    `KDV %${line.vatRate}`,
+  ].filter(Boolean);
+
   return (
-    <div className="px-3 py-3 border-b border-line hover:bg-surface-2/50 transition">
-      <div className="grid grid-cols-[20px_minmax(0,1fr)_36px] sm:grid-cols-[20px_44px_minmax(0,1fr)_auto_32px] gap-x-2.5 gap-y-2 items-start">
-        <div className="pt-1">{mover}</div>
-        <Thumb src={line.photo} className="hidden sm:flex w-11 h-11" />
-        <div className="min-w-0 space-y-1">
-          <textarea
-            rows={1}
-            className="w-full resize-none [field-sizing:content] bg-transparent font-bold text-[15px] sm:text-[14px] leading-snug focus:outline-none focus:bg-surface-2 rounded px-1 -mx-1"
-            value={line.title}
-            onChange={(e) => set('title', e.target.value.replace(/\n/g, ' '))}
-            placeholder="Kalem adı"
-          />
-          <textarea
-            rows={1}
-            className="w-full resize-none [field-sizing:content] bg-transparent text-[13px] sm:text-xs text-muted leading-snug focus:outline-none focus:bg-surface-2 rounded px-1 -mx-1"
-            value={line.summary || ''}
-            onChange={(e) => set('summary', e.target.value.replace(/\n/g, ' '))}
-            placeholder="Açıklama / teknik özet"
-          />
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted">
-            {line.category && <span className="font-semibold text-primary/90">{line.category}</span>}
-            {line.sku && <span>Kod: {line.sku}</span>}
-            {line.type === 'custom' && <span className="text-amber-500 font-semibold">Serbest kalem</span>}
-            {line.listPrice != null && Math.abs(line.listPrice - line.unitPrice) > 0.004 && <span className="text-amber-500">Liste: {fmtMoney(line.listPrice, line.currency)}</span>}
-            {costInfo && (
-              <span className={costInfo.profit < 0 ? 'text-rose-500 font-semibold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}>
-                Maliyet {fmtMoney(costInfo.cost, q.currency)} • Kâr %{fmtNum(costInfo.m, 1)}
-              </span>
-            )}
-            {admin && line.type === 'product' && line.unitCost == null && <span className="text-amber-500">Alış fiyatı tanımsız</span>}
+    <div className="px-3 sm:px-4 py-3 border-b border-line hover:bg-surface-2/40 transition">
+      <div className="flex gap-3">
+        <div className="hidden sm:flex pt-3">{mover}</div>
+        <Thumb src={photo || line.photo} icon={icon} className="w-14 h-14 sm:w-12 sm:h-12" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="text-[10.5px] font-bold uppercase tracking-wide truncate">
+                {line.type === 'custom' ? <span className="text-amber-500">Serbest kalem</span> : <span className="text-primary">{line.category || 'Ürün'}</span>}
+                {line.sku && <span className="text-muted"> • {line.sku}</span>}
+              </div>
+              <textarea
+                rows={1}
+                className="w-full resize-none [field-sizing:content] bg-transparent font-bold text-[15px] sm:text-[14px] leading-snug focus:outline-none focus:bg-surface-2 rounded px-1 -mx-1"
+                value={line.title}
+                onChange={(e) => set('title', e.target.value.replace(/\n/g, ' '))}
+                placeholder="Kalem adı"
+              />
+            </div>
+            <div className="text-right shrink-0 pt-3.5">
+              <div className="font-extrabold tabular-nums text-[15px] leading-none">{fmtMoney(lineTotal, q.currency)}</div>
+              {hasDiscount && <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">-{fmtMoney(lc.lineDiscount * factor, q.currency)}</div>}
+            </div>
           </div>
+          {editSummary ? (
+            <textarea
+              rows={1}
+              autoFocus
+              className="w-full resize-none [field-sizing:content] bg-surface-2 text-[13px] sm:text-xs text-muted leading-snug focus:outline-none rounded px-1 -mx-1 py-0.5"
+              value={line.summary || ''}
+              onChange={(e) => set('summary', e.target.value.replace(/\n/g, ' '))}
+              onBlur={() => setEditSummary(false)}
+              placeholder="Açıklama / teknik özet"
+            />
+          ) : (
+            <button type="button" onClick={() => setEditSummary(true)} className="block w-full text-left text-[12.5px] sm:text-xs text-muted leading-snug line-clamp-2 hover:text-fg">
+              {line.summary || <span className="opacity-60">+ Açıklama ekle</span>}
+            </button>
+          )}
         </div>
-        <div className="hidden sm:block text-right pt-0.5 min-w-[96px]">
-          <div className="font-extrabold tabular-nums">{fmtMoney(lineTotal, q.currency)}</div>
-          {lc.lineDiscount > 0.004 && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">-{fmtMoney(lc.lineDiscount * factor, q.currency)}</div>}
-          {q.vatMode === 'included' && <div className="text-[10px] text-muted">KDV dahil</div>}
+      </div>
+
+      {/* Miktar × birim fiyat – tek satır */}
+      <div className="mt-2.5 flex items-center gap-2 sm:pl-[84px]">
+        <div className="flex items-center rounded-xl border border-line bg-surface-2 shrink-0">
+          <button type="button" className="w-8 h-10 sm:h-9 flex items-center justify-center text-muted hover:text-fg disabled:opacity-30" onClick={() => set('qty', Math.max(0, +(line.qty - 1).toFixed(4)))} disabled={line.qty <= 0} aria-label="Azalt">
+            <Minus className="w-4 h-4" />
+          </button>
+          <NumberInput className="w-10 sm:w-12 bg-transparent text-center font-bold text-base sm:text-sm focus:outline-none px-0" value={line.qty} onChange={(v) => set('qty', v)} min={0} />
+          <button type="button" className="w-8 h-10 sm:h-9 flex items-center justify-center text-muted hover:text-fg" onClick={() => set('qty', +(line.qty + 1).toFixed(4))} aria-label="Artır">
+            <Plus className="w-4 h-4" />
+          </button>
         </div>
-        <button type="button" className="btn-icon w-9 h-9 sm:w-8 sm:h-8" onClick={onRemove} aria-label="Sil">
+        <span className="hidden sm:inline text-muted text-sm shrink-0">×</span>
+        <div className="flex flex-1 min-w-0">
+          <NumberInput wrapClassName="flex-1 min-w-0" className="input-sm rounded-r-none text-right" value={line.unitPrice} onChange={(v) => set('unitPrice', v)} min={0} />
+          <select
+            className={`input-sm w-auto rounded-l-none border-l-0 px-1 text-xs font-bold ${foreign ? 'text-amber-500' : ''}`}
+            value={line.currency}
+            onChange={(e) => set('currency', e.target.value as Currency)}
+            title="Kalem para birimi"
+            aria-label="Para birimi"
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {CURRENCY_SYMBOL[c]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button type="button" className={`btn-icon w-10 h-10 sm:w-9 sm:h-9 shrink-0 ${details ? 'bg-primary/12 text-primary' : ''}`} onClick={() => setDetails(!details)} aria-label="Ayrıntılar" aria-expanded={details}>
+          <SlidersHorizontal className="w-4 h-4" />
+        </button>
+        <button type="button" className="hidden sm:inline-flex btn-icon w-9 h-9 shrink-0 hover:text-rose-500" onClick={onRemove} aria-label="Sil">
           <Trash2 className="w-4 h-4" />
         </button>
+      </div>
 
-        <div className="col-span-3 sm:col-start-3 sm:col-span-3 grid grid-cols-2 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,0.8fr)] gap-2">
-          <div>
-            <span className="block text-[11px] font-semibold text-muted mb-0.5">Miktar</span>
-            <div className="flex">
-              <NumberInput className="input-sm rounded-r-none text-center" value={line.qty} onChange={(v) => set('qty', v)} min={0} />
-              <select className="input-sm w-auto max-w-[84px] rounded-l-none border-l-0 px-1 text-xs" value={line.unit} onChange={(e) => set('unit', e.target.value)}>
+      {!details && (
+        <div className="mt-1.5 sm:pl-[84px] flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-muted">
+          <span>{line.unit}</span>
+          {detailChips.map((c) => (
+            <span key={c} className={c.startsWith('İsk') ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : ''}>
+              • {c}
+            </span>
+          ))}
+          {foreign && <span className="text-amber-500">• ≈ {fmtMoney(lc.unitPrice, q.currency)}</span>}
+          {admin && line.type === 'product' && line.unitCost == null && <span className="text-amber-500">• Alış fiyatı yok</span>}
+          {costInfo && costInfo.profit < 0 && <span className="text-rose-500 font-semibold">• Zararına</span>}
+        </div>
+      )}
+
+      {details && (
+        <div className="mt-2.5 sm:ml-[84px] p-3 rounded-xl bg-surface-2 border border-line space-y-3 animate-in">
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <span className="block text-[11px] font-semibold text-muted mb-0.5">Birim</span>
+              <select className="input-sm px-1.5" value={line.unit} onChange={(e) => set('unit', e.target.value)}>
                 {[...new Set([line.unit, ...UNIT_OPTIONS])].map((u) => (
                   <option key={u}>{u}</option>
                 ))}
               </select>
             </div>
-          </div>
-          <div>
-            <span className="block text-[11px] font-semibold text-muted mb-0.5">
-              Birim fiyat {foreign && <span className="text-amber-500">≈ {fmtMoney(lc.unitPrice, q.currency)}</span>}
-            </span>
-            <div className="flex">
-              <NumberInput className="input-sm rounded-r-none text-right" value={line.unitPrice} onChange={(v) => set('unitPrice', v)} min={0} />
-              <select
-                className={`input-sm w-auto rounded-l-none border-l-0 px-1 text-xs font-bold ${foreign ? 'text-amber-500' : ''}`}
-                value={line.currency}
-                onChange={(e) => set('currency', e.target.value as Currency)}
-                title="Kalem para birimi"
-              >
-                {CURRENCIES.map((c) => (
-                  <option key={c} value={c}>
-                    {CURRENCY_SYMBOL[c]} {c}
+            <div>
+              <span className="block text-[11px] font-semibold text-muted mb-0.5">İskonto</span>
+              <div className="flex">
+                <NumberInput wrapClassName="flex-1 min-w-0" className="input-sm rounded-r-none text-right" value={line.discountValue} onChange={(v) => set('discountValue', v)} min={0} placeholder="0" />
+                <button
+                  type="button"
+                  className="input-sm w-9 shrink-0 rounded-l-none border-l-0 px-0 text-xs font-bold"
+                  onClick={() => set('discountType', line.discountType === 'pct' ? 'amt' : 'pct')}
+                  title="Yüzde / tutar"
+                >
+                  {line.discountType === 'pct' ? '%' : CURRENCY_SYMBOL[q.currency]}
+                </button>
+              </div>
+            </div>
+            <div>
+              <span className="block text-[11px] font-semibold text-muted mb-0.5">KDV</span>
+              <select className="input-sm px-1.5" value={line.vatRate} onChange={(e) => set('vatRate', Number(e.target.value))}>
+                {[...new Set([...VAT_RATES, line.vatRate])].map((r) => (
+                  <option key={r} value={r}>
+                    %{r}
                   </option>
                 ))}
               </select>
             </div>
           </div>
-          <div>
-            <span className="block text-[11px] font-semibold text-muted mb-0.5">İskonto</span>
-            <div className="flex">
-              <NumberInput className="input-sm rounded-r-none text-right" value={line.discountValue} onChange={(v) => set('discountValue', v)} min={0} placeholder="0" />
-              <button
-                type="button"
-                className="input-sm w-9 rounded-l-none border-l-0 px-0 text-xs font-bold"
-                onClick={() => set('discountType', line.discountType === 'pct' ? 'amt' : 'pct')}
-                title="Yüzde / tutar"
-              >
-                {line.discountType === 'pct' ? '%' : CURRENCY_SYMBOL[q.currency]}
-              </button>
+          {admin && (
+            <div className="text-xs space-y-1.5">
+              {line.type === 'custom' ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted">Birim maliyet:</span>
+                  <NumberInput className="input-sm w-28" value={line.unitCost ?? null} onChange={(v) => onChange({ ...line, unitCost: v, costCurrency: line.currency })} placeholder="opsiyonel" />
+                  <span className="text-muted">{line.currency}</span>
+                </div>
+              ) : null}
+              {costInfo ? (
+                <div className={costInfo.profit < 0 ? 'text-rose-500 font-semibold' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}>
+                  Maliyet {fmtMoney(costInfo.cost, q.currency)} • Kâr {fmtMoney(costInfo.profit, q.currency)} (%{fmtNum(costInfo.m, 1)})
+                </div>
+              ) : (
+                line.type === 'product' && <div className="text-amber-500">Bu ürünün alış fiyatı tanımlı değil; kâr hesaplanamıyor.</div>
+              )}
+              {line.listPrice != null && Math.abs(line.listPrice - line.unitPrice) > 0.004 && <div className="text-amber-500">Katalog fiyatı: {fmtMoney(line.listPrice, line.currency)}</div>}
             </div>
+          )}
+          <div className="grid grid-cols-3 gap-2 sm:hidden">
+            <button type="button" className="btn-secondary btn-sm" disabled={index === 0} onClick={() => onMove(-1)}>
+              <ChevronUp className="w-4 h-4" /> Yukarı
+            </button>
+            <button type="button" className="btn-secondary btn-sm" disabled={index === count - 1} onClick={() => onMove(1)}>
+              <ChevronDown className="w-4 h-4" /> Aşağı
+            </button>
+            <button type="button" className="btn-sm btn bg-rose-500/10 text-rose-500 border border-rose-500/30" onClick={onRemove}>
+              <Trash2 className="w-4 h-4" /> Sil
+            </button>
           </div>
-          <div>
-            <span className="block text-[11px] font-semibold text-muted mb-0.5">KDV</span>
-            <select className="input-sm px-1.5" value={line.vatRate} onChange={(e) => set('vatRate', Number(e.target.value))}>
-              {[...new Set([...VAT_RATES, line.vatRate])].map((r) => (
-                <option key={r} value={r}>
-                  %{r}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="col-span-2 sm:hidden flex items-center justify-between pt-1">
-            <span className="text-xs font-semibold text-muted">
-              Satır toplamı{q.vatMode === 'included' ? ' (KDV dahil)' : ''}
-              {lc.lineDiscount > 0.004 && <span className="text-emerald-600 dark:text-emerald-400"> • -{fmtMoney(lc.lineDiscount * factor, q.currency)}</span>}
-            </span>
-            <span className="font-extrabold tabular-nums">{fmtMoney(lineTotal, q.currency)}</span>
-          </div>
-        </div>
-      </div>
-      {admin && line.type === 'custom' && (
-        <div className="mt-2 sm:ml-[74px] flex items-center gap-2 text-xs">
-          <span className="text-muted">Birim maliyet:</span>
-          <NumberInput className="input-sm w-28" value={line.unitCost ?? null} onChange={(v) => onChange({ ...line, unitCost: v, costCurrency: line.currency })} placeholder="opsiyonel" />
-          <span className="text-muted">{line.currency}</span>
         </div>
       )}
     </div>
@@ -819,7 +880,7 @@ export default function QuoteEditor() {
                           Hazır paket olarak kaydet
                         </MenuItem>
                       )}
-                      {isAdmin && (
+                      {(isAdmin || (q.createdBy === user?.id && q.status === 'draft')) && (
                         <MenuItem icon={Trash2} danger onClick={() => action('delete')}>
                           Teklifi sil
                         </MenuItem>
@@ -945,6 +1006,8 @@ export default function QuoteEditor() {
                   <LineRow
                     key={l.id}
                     line={l}
+                    photo={l.productId ? productMap.get(l.productId)?.photo : undefined}
+                    icon={l.productId ? categoryMap.get(productMap.get(l.productId)?.categoryId || '')?.icon : undefined}
                     lc={calc.lines[i]}
                     q={q}
                     admin={isAdmin}

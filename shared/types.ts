@@ -308,6 +308,7 @@ export type QuoteSummary = Pick<
   | 'supersededBy'
   | 'createdAt'
   | 'updatedAt'
+  | 'createdBy'
   | 'createdByName'
 > & {
   customerName: string;

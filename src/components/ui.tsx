@@ -453,11 +453,14 @@ export function NumberInput({
   placeholder,
   suffix,
   min,
+  wrapClassName = '',
   ...rest
 }: {
   value: number | null | undefined;
   onChange: (v: number) => void;
   className?: string;
+  /** Sarmalayıcı div sınıfı (örn. flex içinde büyümesi için "flex-1 min-w-0") */
+  wrapClassName?: string;
   placeholder?: string;
   suffix?: ReactNode;
   min?: number;
@@ -473,7 +476,7 @@ export function NumberInput({
     }
   }, [value]);
   return (
-    <div className="relative">
+    <div className={`relative ${wrapClassName}`}>
       <input
         {...rest}
         inputMode="decimal"

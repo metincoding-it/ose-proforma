@@ -151,6 +151,7 @@ export function summaryOut(r: QuoteRow & { customer_name?: string }, admin: bool
     supersededBy: r.superseded_by,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    createdBy: r.created_by,
     createdByName: r.created_by_name ?? null,
     grand: totals.grand ?? 0,
     net: totals.net ?? 0,
@@ -661,9 +662,12 @@ quoteRoutes.post('/:id/duplicate', async (c) => {
 });
 
 quoteRoutes.delete('/:id', async (c) => {
-  requireAdmin(c);
   const id = c.req.param('id');
   const existing = await loadQuote(c, id);
+  // Yönetici her teklifi; satış personeli yalnızca kendi oluşturduğu taslakları silebilir
+  if (!isAdmin(c) && !(existing.created_by === c.get('user').id && existing.status === 'draft')) {
+    fail(403, 'Bu teklifi silme yetkiniz yok. Satış personeli yalnızca kendi taslaklarını silebilir.');
+  }
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM quotes WHERE id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM quote_events WHERE quote_id = ?').bind(id),

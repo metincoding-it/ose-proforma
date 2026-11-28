@@ -102,6 +102,8 @@ input[type='number'] { -moz-appearance: textfield; }
 
 /* Mobil: hiçbir sayfa yatayda taşmasın */
 html, body { overflow-x: clip; }
+/* Grid öğeleri uzun (truncate) metinler yüzünden sütunu genişletmesin */
+.grid > * { min-width: 0; }
 /* Metin alanları içerik kadar büyüsün (destekleyen tarayıcılarda) */
 textarea.input { field-sizing: content; max-height: 50vh; }
 

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { Plus, Search, Eye, ShieldAlert, FileText, GitBranch } from 'lucide-react';
+import { Plus, Search, Eye, ShieldAlert, FileText, GitBranch, Trash2 } from 'lucide-react';
 import type { QuoteSummary } from '../../../shared/types';
 import { STATUS_LABEL } from '../../../shared/types';
 import { api, errMsg } from '../../lib/api';
-import { useAuth } from '../../lib/store';
+import { useAuth, useUi } from '../../lib/store';
 import { fmtMoney, fmtDate, fmtTry, daysUntil } from '../../lib/format';
 import { PageHeader, PageLoader, StatusBadge, Empty } from '../../components/ui';
 
@@ -26,8 +26,30 @@ export default function QuotesList() {
   const [showAll, setShowAll] = useState(false);
   const [quotes, setQuotes] = useState<QuoteSummary[] | null>(null);
   const [error, setError] = useState('');
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const { toast, confirm } = useUi();
   const navigate = useNavigate();
+  const [deleting, setDeleting] = useState('');
+  const canDelete = (x: QuoteSummary) => isAdmin || (!!user && x.createdBy === user.id && x.status === 'draft');
+  const remove = async (x: QuoteSummary) => {
+    const ok = await confirm({
+      title: `${x.number} silinsin mi?`,
+      message: `${x.customerName}${x.title ? ` – ${x.title}` : ''} teklifi ve geçmişi kalıcı olarak silinecek. Müşteriye gönderilen link de çalışmaz hale gelir. Bu işlem geri alınamaz.`,
+      confirmText: 'Kalıcı olarak sil',
+      danger: true,
+    });
+    if (!ok) return;
+    setDeleting(x.id);
+    try {
+      await api.del(`/quotes/${x.id}`);
+      setQuotes((qs) => (qs || []).filter((y) => y.id !== x.id));
+      toast(`${x.number} silindi.`, 'success');
+    } catch (e) {
+      toast(errMsg(e), 'error');
+    } finally {
+      setDeleting('');
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q), 250);
@@ -101,13 +123,14 @@ export default function QuotesList() {
         />
       ) : (
         <div className="card overflow-hidden">
-          <div className="hidden md:grid grid-cols-[150px_minmax(0,1fr)_120px_110px_150px_110px] gap-4 px-5 py-3 border-b border-line table-head">
+          <div className="hidden md:grid grid-cols-[150px_minmax(0,1fr)_120px_110px_150px_110px_36px] gap-4 px-5 py-3 border-b border-line table-head">
             <span>Teklif No</span>
             <span>Müşteri / Proje</span>
             <span>Durum</span>
             <span>Tarih</span>
             <span className="text-right">Tutar</span>
             <span className="text-right">Geçerlilik</span>
+            <span />
           </div>
           <div className="divide-y divide-line">
             {quotes.map((x) => {
@@ -117,7 +140,7 @@ export default function QuotesList() {
                 <Link
                   key={x.id}
                   to={`/teklifler/${x.id}`}
-                  className={`grid grid-cols-[1fr_auto] md:grid-cols-[150px_minmax(0,1fr)_120px_110px_150px_110px] gap-x-4 gap-y-1 px-5 py-3.5 hover:bg-surface-2 transition items-center ${x.supersededBy ? 'opacity-60' : ''}`}
+                  className={`grid grid-cols-[1fr_auto] md:grid-cols-[150px_minmax(0,1fr)_120px_110px_150px_110px_36px] gap-x-4 gap-y-1 px-5 py-3.5 hover:bg-surface-2 transition items-center ${x.supersededBy ? 'opacity-60' : ''}`}
                 >
                   <div className="font-bold text-sm flex items-center gap-1.5 md:order-none order-2 md:col-auto col-span-2 text-muted md:text-fg">
                     {x.revision > 1 && <GitBranch className="w-3.5 h-3.5 text-primary" />}
@@ -148,6 +171,24 @@ export default function QuotesList() {
                     )}
                   </div>
                   <div className={`hidden md:block text-right text-sm ${expired ? 'text-rose-500 font-semibold' : 'text-muted'}`}>{fmtDate(x.validUntil)}</div>
+                  <div className="order-3 md:order-none justify-self-end">
+                    {canDelete(x) && (
+                      <button
+                        type="button"
+                        className="btn-icon w-9 h-9 text-muted hover:text-rose-500 hover:bg-rose-500/10"
+                        aria-label={`${x.number} teklifini sil`}
+                        title="Teklifi sil"
+                        disabled={deleting === x.id}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          remove(x);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </Link>
               );
             })}

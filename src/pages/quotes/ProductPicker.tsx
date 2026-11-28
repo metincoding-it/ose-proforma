@@ -137,7 +137,7 @@ export default function ProductPicker({
           {list.length === 0 ? (
             <Empty title="Ürün bulunamadı" text={products.length ? 'Arama kriterini değiştirin.' : 'Önce Ürünler sayfasından ürün ekleyin.'} />
           ) : (
-            <div className="grid sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {list.map((p) => {
                 const n = counts.get(p.id);
                 const cat2 = categoryMap.get(p.categoryId);
@@ -145,7 +145,7 @@ export default function ProductPicker({
                   <button
                     key={p.id}
                     onClick={() => addProduct(p)}
-                    className={`p-2.5 rounded-xl border text-left flex items-center gap-3 transition ${n ? 'border-primary bg-primary/5' : 'border-line bg-surface-2 hover:border-primary/50'}`}
+                    className={`w-full min-w-0 p-2.5 rounded-xl border text-left flex items-center gap-3 transition ${n ? 'border-primary bg-primary/5' : 'border-line bg-surface-2 hover:border-primary/50'}`}
                   >
                     <Thumb src={p.photo} icon={cat2?.icon} className="w-12 h-12" />
                     <div className="min-w-0 flex-1">
